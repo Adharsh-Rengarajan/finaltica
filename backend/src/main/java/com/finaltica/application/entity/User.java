@@ -2,7 +2,6 @@ package com.finaltica.application.entity;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Locale.Category;
 import java.util.UUID;
 
 import jakarta.persistence.CascadeType;
