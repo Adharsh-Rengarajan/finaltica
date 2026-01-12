@@ -28,6 +28,12 @@ jobs:
       working-directory: ./backend
       run: mvn clean package -DskipTests
 
+  
+    - name: Tests
+      working-directory: ./backend
+      run: mvn clean test
+ 
+
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
       with:
