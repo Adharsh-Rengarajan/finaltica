@@ -7,8 +7,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.finaltica.application.dto.LoginRequestDTO;
 import com.finaltica.application.dto.SignupRequestDTO;
 import com.finaltica.application.service.AuthService;
+
+import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -22,4 +25,8 @@ public class AuthController {
 		return authService.signup(signupRequestDTO);
 	}
 
+	@PostMapping("/login")
+	public ResponseEntity<?> login(@Valid @RequestBody LoginRequestDTO loginRequestDTO) {
+		return authService.login(loginRequestDTO);
+	}
 }
