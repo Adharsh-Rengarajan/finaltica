@@ -24,34 +24,26 @@ jobs:
         distribution: 'temurin'
         cache: 'maven'
 
+    - name: Create .env file
+      working-directory: ./backend
+      run: |
+        echo "DB_URL=${{ secrets.DB_URL }}" >> .env
+        echo "DB_USERNAME=${{ secrets.DB_USERNAME }}" >> .env
+        echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> .env
+        echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> .env
+        echo "JWT_EXPIRATION=1800000" >> .env
+        echo "SERVER_PORT=8080" >> .env
+        echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> .env
+        echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
+        echo "AWS_S3_BUCKET_NAME=${{ secrets.AWS_S3_BUCKET_NAME }}" >> .env
+        echo "AWS_REGION=${{ secrets.AWS_REGION }}" >> .env
+
     - name: Build with Maven
       working-directory: ./backend
-      env:
-        DB_URL: ${{ secrets.DB_URL }}
-        DB_USERNAME: ${{ secrets.DB_USERNAME }}
-        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        JWT_SECRET: ${{ secrets.JWT_SECRET }}
-        JWT_EXPIRATION: 1800000
-        SERVER_PORT: ${{ secrets.SERVER_PORT }}
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
-        AWS_REGION: ${{ secrets.AWS_REGION }}
       run: mvn clean package -DskipTests
 
     - name: Tests
       working-directory: ./backend
-      env:
-        DB_URL: ${{ secrets.DB_URL }}
-        DB_USERNAME: ${{ secrets.DB_USERNAME }}
-        DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-        JWT_SECRET: ${{ secrets.JWT_SECRET }}
-        JWT_EXPIRATION: 1800000
-        SERVER_PORT: ${{ secrets.SERVER_PORT }}
-        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        AWS_S3_BUCKET_NAME: ${{ secrets.AWS_S3_BUCKET_NAME }}
-        AWS_REGION: ${{ secrets.AWS_REGION }}
       run: mvn clean test
 
     - name: Upload Build Artifact
