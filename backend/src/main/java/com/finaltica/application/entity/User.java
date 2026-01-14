@@ -14,15 +14,19 @@ import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 
 @Entity
 @Table(name = "users")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@ToString
 public class User {
 
 	@Id
@@ -33,6 +37,7 @@ public class User {
 	private String email;
 
 	@Column(name = "password_hash", nullable = false)
+	@ToString.Exclude
 	private String passwordHash;
 
 	@Column(name = "first_name", nullable = false, length = 100)
@@ -45,10 +50,15 @@ public class User {
 	@Builder.Default
 	private Instant createdAt = Instant.now();
 
-	// Relationships
+	@Column(name = "updated_at", nullable = false)
+	@Builder.Default
+	private Instant updatedAt = Instant.now();
+
 	@OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+	@ToString.Exclude
 	private List<Account> accounts;
 
 	@OneToMany(mappedBy = "user", cascade = CascadeType.ALL)
+	@ToString.Exclude
 	private List<Category> categories;
 }
