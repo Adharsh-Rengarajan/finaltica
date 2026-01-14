@@ -42,4 +42,49 @@ public class GlobalExceptionHandler {
 		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponse.error(
 				HttpStatus.INTERNAL_SERVER_ERROR.value(), "An unexpected error occurred: " + ex.getMessage(), null));
 	}
+
+	@ExceptionHandler(CategoryNotFoundException.class)
+	public ResponseEntity<ApiResponse<Object>> handleCategoryNotFound(CategoryNotFoundException ex) {
+		Map<String, String> errors = new HashMap<>();
+		errors.put("category", ex.getMessage());
+
+		return ResponseEntity.status(HttpStatus.NOT_FOUND)
+				.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), ex.getMessage(), errors));
+	}
+
+	@ExceptionHandler(DuplicateCategoryException.class)
+	public ResponseEntity<ApiResponse<Object>> handleDuplicateCategory(DuplicateCategoryException ex) {
+		Map<String, String> errors = new HashMap<>();
+		errors.put("name", ex.getMessage());
+
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ApiResponse.error(HttpStatus.CONFLICT.value(), "Category already exists", errors));
+	}
+
+	@ExceptionHandler(CannotModifyGlobalCategoryException.class)
+	public ResponseEntity<ApiResponse<Object>> handleCannotModifyGlobal(CannotModifyGlobalCategoryException ex) {
+		Map<String, String> errors = new HashMap<>();
+		errors.put("category", ex.getMessage());
+
+		return ResponseEntity.status(HttpStatus.FORBIDDEN)
+				.body(ApiResponse.error(HttpStatus.FORBIDDEN.value(), ex.getMessage(), errors));
+	}
+
+	@ExceptionHandler(CategoryInUseException.class)
+	public ResponseEntity<ApiResponse<Object>> handleCategoryInUse(CategoryInUseException ex) {
+		Map<String, String> errors = new HashMap<>();
+		errors.put("category", ex.getMessage());
+
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+				.body(ApiResponse.error(HttpStatus.CONFLICT.value(), ex.getMessage(), errors));
+	}
+
+	@ExceptionHandler(UnauthorizedAccessException.class)
+	public ResponseEntity<ApiResponse<Object>> handleUnauthorizedAccess(UnauthorizedAccessException ex) {
+		Map<String, String> errors = new HashMap<>();
+		errors.put("authorization", ex.getMessage());
+
+		return ResponseEntity.status(HttpStatus.FORBIDDEN)
+				.body(ApiResponse.error(HttpStatus.FORBIDDEN.value(), "Access denied", errors));
+	}
 }

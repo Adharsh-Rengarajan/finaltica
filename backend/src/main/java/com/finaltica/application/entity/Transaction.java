@@ -22,12 +22,14 @@ import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
 
 @Entity
 @Table(name = "transactions")
-@Data
+@Getter
+@Setter
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
@@ -45,7 +47,6 @@ public class Transaction {
 	@JoinColumn(name = "category_id")
 	private Category category;
 
-	// Self-referencing for Transfers
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "related_transaction_id")
 	private Transaction relatedTransaction;
@@ -67,7 +68,14 @@ public class Transaction {
 	@Column(name = "payment_mode", nullable = false)
 	private PaymentMode paymentMode;
 
-	// One-to-One with InvestmentMetadata
+	@Column(name = "created_at", nullable = false, updatable = false)
+	@Builder.Default
+	private Instant createdAt = Instant.now();
+
+	@Column(name = "updated_at", nullable = false)
+	@Builder.Default
+	private Instant updatedAt = Instant.now();
+
 	@OneToOne(mappedBy = "transaction", cascade = CascadeType.ALL, orphanRemoval = true)
 	private InvestmentMetadata investmentMetadata;
 }
