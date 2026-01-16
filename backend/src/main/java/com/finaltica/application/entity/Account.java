@@ -47,7 +47,7 @@ public class Account {
 	private String name;
 
 	@Enumerated(EnumType.STRING)
-	@Column(nullable = false)
+	@Column(nullable = false, columnDefinition = "account_type_enum")
 	private AccountType type;
 
 	@Column(name = "current_balance", nullable = false, precision = 18, scale = 2)
@@ -55,7 +55,7 @@ public class Account {
 	private BigDecimal currentBalance = BigDecimal.ZERO;
 
 	@Enumerated(EnumType.STRING)
-	@Column(nullable = false)
+	@Column(nullable = false, columnDefinition = "currency_code_enum")
 	private CurrencyCode currency;
 
 	@OneToMany(mappedBy = "account", cascade = CascadeType.ALL)
