@@ -55,7 +55,7 @@ public class Transaction {
 	private BigDecimal amount;
 
 	@Enumerated(EnumType.STRING)
-	@Column(nullable = false)
+	@Column(nullable = false, length = 20)
 	private TransactionType type;
 
 	@Column(length = 500)
@@ -65,7 +65,7 @@ public class Transaction {
 	private Instant transactionDate;
 
 	@Enumerated(EnumType.STRING)
-	@Column(name = "payment_mode", nullable = false)
+	@Column(name = "payment_mode", nullable = false, length = 20)
 	private PaymentMode paymentMode;
 
 	@Column(name = "created_at", nullable = false, updatable = false)

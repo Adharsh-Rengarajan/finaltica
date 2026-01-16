@@ -38,7 +38,7 @@ public class Category {
 	private String name;
 
 	@Enumerated(EnumType.STRING)
-	@Column(nullable = false)
+	@Column(nullable = false, length = 20)
 	private CategoryType type;
 
 	@Column(name = "created_at", nullable = false, updatable = false)
@@ -50,6 +50,6 @@ public class Category {
 	private Instant updatedAt = Instant.now();
 
 	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "user_id") // Nullable for global categories
+	@JoinColumn(name = "user_id")
 	private User user;
 }

@@ -34,7 +34,7 @@ public class InvestmentMetadata {
 	private UUID transactionId;
 
 	@OneToOne(fetch = FetchType.LAZY)
-	@MapsId // This binds the ID to the Transaction entity's ID
+	@MapsId
 	@JoinColumn(name = "transaction_id")
 	private Transaction transaction;
 
@@ -42,7 +42,7 @@ public class InvestmentMetadata {
 	private String assetSymbol;
 
 	@Enumerated(EnumType.STRING)
-	@Column(name = "asset_type", nullable = false)
+	@Column(name = "asset_type", nullable = false, length = 20)
 	private AssetType assetType;
 
 	@Column(nullable = false, precision = 20, scale = 8)
