@@ -1,6 +1,7 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { X, AlertCircle } from 'lucide-react';
 import { Account, AssetType, PaymentMode } from '@typings/index';
+import { formatCurrency } from '@utils/formatters';
 import styles from '@styles/transactionmodal.module.css';
 
 interface InvestmentModalProps {
@@ -52,6 +53,11 @@ const InvestmentModal = ({ isOpen, onClose, onSubmit, investmentAccounts }: Inve
     }
   }, [isOpen]);
 
+  const selectedAccount = investmentAccounts.find((a) => a.id === formData.accountId);
+  const totalCost = formData.quantity * formData.pricePerUnit;
+  const availableBalance = selectedAccount ? Number(selectedAccount.currentBalance) : 0;
+  const insufficientFunds = !!selectedAccount && totalCost > 0 && totalCost > availableBalance;
+
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
@@ -69,6 +75,12 @@ const InvestmentModal = ({ isOpen, onClose, onSubmit, investmentAccounts }: Inve
 
     if (formData.pricePerUnit <= 0) {
       newErrors.pricePerUnit = 'Price per unit must be greater than 0';
+    }
+
+    if (insufficientFunds) {
+      newErrors.amount = `Insufficient balance. Available: ${formatCurrency(
+        availableBalance
+      )}, required: ${formatCurrency(totalCost)}`;
     }
 
     setErrors(newErrors);
@@ -97,13 +109,13 @@ const InvestmentModal = ({ isOpen, onClose, onSubmit, investmentAccounts }: Inve
   };
 
   const handleChange = (field: string, value: string | number) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
+      setErrors((prev) => ({ ...prev, [field]: '' }));
     }
   };
 
-  const totalCost = formData.quantity * formData.pricePerUnit;
+  const maxDate = new Date().toISOString().slice(0, 16);
 
   if (!isOpen) return null;
 
@@ -126,9 +138,9 @@ const InvestmentModal = ({ isOpen, onClose, onSubmit, investmentAccounts }: Inve
               onChange={(e) => handleChange('accountId', e.target.value)}
             >
               <option value="">Select investment account</option>
-              {investmentAccounts.map(account => (
+              {investmentAccounts.map((account) => (
                 <option key={account.id} value={account.id}>
-                  {account.name}
+                  {account.name} — {formatCurrency(Number(account.currentBalance))} available
                 </option>
               ))}
             </select>
@@ -137,6 +149,11 @@ const InvestmentModal = ({ isOpen, onClose, onSubmit, investmentAccounts }: Inve
                 <AlertCircle size={16} />
                 {errors.accountId}
               </span>
+            )}
+            {selectedAccount && (
+              <small style={{ color: '#6b7280', marginTop: '0.25rem', display: 'block' }}>
+                Available balance: <strong>{formatCurrency(availableBalance)}</strong>
+              </small>
             )}
           </div>
 
@@ -178,6 +195,7 @@ const InvestmentModal = ({ isOpen, onClose, onSubmit, investmentAccounts }: Inve
               <input
                 type="number"
                 step="0.00000001"
+                min="0"
                 className={`${styles.input} ${errors.quantity ? styles.error : ''}`}
                 placeholder="0.00"
                 value={formData.quantity || ''}
@@ -196,6 +214,7 @@ const InvestmentModal = ({ isOpen, onClose, onSubmit, investmentAccounts }: Inve
               <input
                 type="number"
                 step="0.0001"
+                min="0"
                 className={`${styles.input} ${errors.pricePerUnit ? styles.error : ''}`}
                 placeholder="0.00"
                 value={formData.pricePerUnit || ''}
@@ -215,16 +234,22 @@ const InvestmentModal = ({ isOpen, onClose, onSubmit, investmentAccounts }: Inve
             <div
               style={{
                 padding: '0.75rem 1rem',
-                background: '#dcfce7',
-                border: '2px solid #bbf7d0',
+                background: insufficientFunds ? '#fee2e2' : '#dcfce7',
+                border: `2px solid ${insufficientFunds ? '#fca5a5' : '#bbf7d0'}`,
                 borderRadius: '8px',
                 fontWeight: 700,
                 fontSize: '1.125rem',
-                color: '#166534',
+                color: insufficientFunds ? '#991b1b' : '#166534',
               }}
             >
-              ${totalCost.toFixed(2)}
+              {formatCurrency(totalCost)}
             </div>
+            {errors.amount && (
+              <span className={styles.errorMessage}>
+                <AlertCircle size={16} />
+                {errors.amount}
+              </span>
+            )}
           </div>
 
           <div className={styles.formRow}>
@@ -234,6 +259,7 @@ const InvestmentModal = ({ isOpen, onClose, onSubmit, investmentAccounts }: Inve
                 type="datetime-local"
                 className={styles.input}
                 value={formData.transactionDate}
+                max={maxDate}
                 onChange={(e) => handleChange('transactionDate', e.target.value)}
               />
             </div>
@@ -276,7 +302,7 @@ const InvestmentModal = ({ isOpen, onClose, onSubmit, investmentAccounts }: Inve
             <button
               type="submit"
               className={styles.submitButton}
-              disabled={loading}
+              disabled={loading || insufficientFunds}
             >
               {loading ? 'Processing...' : 'Buy Investment'}
             </button>

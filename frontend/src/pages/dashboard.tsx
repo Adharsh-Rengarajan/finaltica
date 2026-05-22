@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { 
-  Wallet, 
-  ArrowDownCircle, 
-  ArrowUpCircle, 
-  PiggyBank, 
-  Plus, 
+import {
+  Wallet,
+  ArrowDownCircle,
+  ArrowUpCircle,
+  PiggyBank,
+  Plus,
   ChevronRight,
   Loader,
   ArrowLeftRight
@@ -18,6 +18,7 @@ import AccountCard from '@components/accountcard';
 import TransactionTable from '@components/transactiontable';
 import IncomeExpenseChart from '@components/incomeexpensechart';
 import CategorySpendingChart from '@components/categoryspendingchart';
+import ErrorBanner from '@components/errorbanner';
 import { Account, Transaction, NetWorthResponse, MonthlySummary, CategorySpendingResponse, ApiResponse } from '@typings/index';
 import { formatCurrency } from '@utils/formatters';
 import styles from '@styles/dashboard.module.css';
@@ -25,6 +26,7 @@ import styles from '@styles/dashboard.module.css';
 const Dashboard = () => {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [netWorth, setNetWorth] = useState<NetWorthResponse | null>(null);
   const [monthlySummary, setMonthlySummary] = useState<MonthlySummary | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -40,23 +42,16 @@ const Dashboard = () => {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      console.log('[DASHBOARD] Fetching dashboard data');
+      setError(null);
 
       const currentDate = new Date();
       const year = currentDate.getFullYear();
       const month = currentDate.getMonth() + 1;
 
-      // Calculate date range - start of this year to now
-      const startOfYear = new Date(year, 0, 1); // January 1st of current year
+      const startOfYear = new Date(year, 0, 1);
       const endOfToday = new Date();
       endOfToday.setHours(23, 59, 59, 999);
 
-      console.log('[DASHBOARD] Date range for category spending:', {
-        startDate: startOfYear.toISOString(),
-        endDate: endOfToday.toISOString()
-      });
-
-      // Fetch all data in parallel
       const [netWorthRes, summaryRes, accountsRes, transactionsRes, categorySpendingRes] = await Promise.all([
         api.get<ApiResponse<NetWorthResponse>>(API_ENDPOINTS.ANALYTICS.NET_WORTH),
         api.get<ApiResponse<MonthlySummary>>(`${API_ENDPOINTS.ANALYTICS.MONTHLY_SUMMARY}?year=${year}&month=${month}`),
@@ -67,20 +62,14 @@ const Dashboard = () => {
         ),
       ]);
 
-      console.log('[DASHBOARD] Data fetched successfully');
-
       setNetWorth(netWorthRes.data.data);
       setMonthlySummary(summaryRes.data.data);
       setAccounts(accountsRes.data.data.slice(0, 3));
       setRecentTransactions(transactionsRes.data.data.slice(0, 10));
 
-      // Fetch last 6 months for income/expense chart
       const chartData = await fetchLast6Months();
       setIncomeExpenseData(chartData);
 
-      // Process category spending data
-      console.log('[DASHBOARD] Category spending response:', categorySpendingRes.data.data);
-      
       const expenseChartData = categorySpendingRes.data.data.expenses.map(cat => ({
         name: cat.categoryName,
         value: Math.abs(cat.amount),
@@ -90,15 +79,16 @@ const Dashboard = () => {
         name: cat.categoryName,
         value: Math.abs(cat.amount),
       }));
-      
-      console.log('[DASHBOARD] Expense chart data:', expenseChartData);
-      console.log('[DASHBOARD] Income chart data:', incomeChartData);
-      
+
       setCategoryExpenseData(expenseChartData);
       setCategoryIncomeData(incomeChartData);
 
-    } catch (error: any) {
-      console.error('[DASHBOARD] Error fetching data:', error);
+    } catch (err: any) {
+      console.error('[DASHBOARD] Error fetching data:', err);
+      setError(
+        err.response?.data?.message ||
+          'Could not load dashboard data. Please refresh or try again later.'
+      );
     } finally {
       setLoading(false);
     }
@@ -107,7 +97,7 @@ const Dashboard = () => {
   const fetchLast6Months = async () => {
     const currentDate = new Date();
     const data = [];
-    
+
     for (let i = 5; i >= 0; i--) {
       const date = new Date();
       date.setMonth(currentDate.getMonth() - i);
@@ -159,9 +149,9 @@ const Dashboard = () => {
     if (!monthlySummary || monthlySummary.incomeTransactionCount === 0) {
       return { message: 'No transactions yet', type: 'neutral' as const };
     }
-    return { 
+    return {
       message: `${monthlySummary.incomeTransactionCount} transaction${monthlySummary.incomeTransactionCount > 1 ? 's' : ''}`,
-      type: 'neutral' as const 
+      type: 'neutral' as const
     };
   };
 
@@ -169,9 +159,9 @@ const Dashboard = () => {
     if (!monthlySummary || monthlySummary.expenseTransactionCount === 0) {
       return { message: 'No transactions yet', type: 'neutral' as const };
     }
-    return { 
+    return {
       message: `${monthlySummary.expenseTransactionCount} transaction${monthlySummary.expenseTransactionCount > 1 ? 's' : ''}`,
-      type: 'neutral' as const 
+      type: 'neutral' as const
     };
   };
 
@@ -194,6 +184,8 @@ const Dashboard = () => {
 
   return (
     <div className={styles.dashboard}>
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+
       <div className={styles.header}>
         <h1 className={styles.title}>
           {getGreeting()}, {user?.firstName}!
@@ -203,7 +195,6 @@ const Dashboard = () => {
         </p>
       </div>
 
-      {/* Summary Cards */}
       <div className={styles.summaryCards}>
         <SummaryCard
           title="Net Worth"
@@ -243,7 +234,6 @@ const Dashboard = () => {
         />
       </div>
 
-      {/* Charts Row */}
       <div className={styles.chartsRow}>
         <div className={styles.card}>
           <div className={styles.cardHeader}>
@@ -256,14 +246,13 @@ const Dashboard = () => {
           <div className={styles.cardHeader}>
             <h2 className={styles.cardTitle}>Income & Expense Categories</h2>
           </div>
-          <CategorySpendingChart 
-            expenseData={categoryExpenseData} 
+          <CategorySpendingChart
+            expenseData={categoryExpenseData}
             incomeData={categoryIncomeData}
           />
         </div>
       </div>
 
-      {/* Accounts Section */}
       <div className={styles.card} style={{ marginBottom: '2rem' }}>
         <div className={styles.cardHeader}>
           <h2 className={styles.cardTitle}>Your Accounts</h2>
@@ -292,7 +281,6 @@ const Dashboard = () => {
         )}
       </div>
 
-      {/* Recent Transactions */}
       <div className={styles.card}>
         <div className={styles.cardHeader}>
           <h2 className={styles.cardTitle}>Recent Transactions</h2>

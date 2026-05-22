@@ -43,6 +43,13 @@ public class TransactionController {
 		return transactionService.getAllTransactions(user);
 	}
 
+	@GetMapping("/investments")
+	public ResponseEntity<?> getInvestmentTransactions(@RequestParam(required = false) UUID accountId,
+			@AuthenticationPrincipal User user) {
+
+		return transactionService.getInvestmentTransactions(accountId, user);
+	}
+
 	@GetMapping("/{id}")
 	public ResponseEntity<?> getTransactionById(@PathVariable UUID id, @AuthenticationPrincipal User user) {
 

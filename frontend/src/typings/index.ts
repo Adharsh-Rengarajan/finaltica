@@ -1,4 +1,3 @@
-// Enums
 export enum AccountType {
   CHECKING = 'CHECKING',
   CREDIT = 'CREDIT',
@@ -34,7 +33,6 @@ export enum AssetType {
   MUTUAL_FUND = 'MUTUAL_FUND'
 }
 
-// User Types
 export interface User {
   id: string;
   email: string;
@@ -60,7 +58,6 @@ export interface LoginResponse {
   user: User;
 }
 
-// Account Types
 export interface Account {
   id: string;
   name: string;
@@ -80,10 +77,8 @@ export interface CreateAccountRequest {
 
 export interface UpdateAccountRequest {
   name: string;
-  currency: CurrencyCode;
 }
 
-// Category Types
 export interface Category {
   id: string;
   name: string;
@@ -102,7 +97,6 @@ export interface UpdateCategoryRequest {
   name: string;
 }
 
-// Transaction Types
 export interface Transaction {
   id: string;
   accountId: string;
@@ -165,7 +159,26 @@ export interface InvestmentTransaction {
   investmentMetadata: InvestmentMetadata;
 }
 
-// Analytics Types
+export interface PortfolioHolding {
+  assetSymbol: string;
+  assetType: AssetType;
+  totalQuantity: number;
+  averagePrice: number;
+  totalInvested: number;
+  currentPrice: number;
+  currentValue: number;
+  returns: number;
+  returnsPercentage: number;
+}
+
+export interface PortfolioSummary {
+  totalInvested: number;
+  currentValue: number;
+  totalReturns: number;
+  returnsPercentage: number;
+  holdings: PortfolioHolding[];
+}
+
 export interface NetWorthResponse {
   totalAssets: number;
   totalLiabilities: number;
@@ -200,7 +213,6 @@ export interface CategorySpendingResponse {
   income: CategorySpending[];
 }
 
-// API Response Types
 export interface ApiResponse<T> {
   statusCode: number;
   success: boolean;

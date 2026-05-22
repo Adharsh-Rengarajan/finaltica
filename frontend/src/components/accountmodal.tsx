@@ -15,7 +15,7 @@ export interface AccountFormData {
   name: string;
   type: AccountType;
   currency: CurrencyCode;
-  initialBalance?: number;
+  initialBalance: number;
 }
 
 const AccountModal = ({ isOpen, onClose, onSubmit, account, mode }: AccountModalProps) => {
@@ -35,6 +35,7 @@ const AccountModal = ({ isOpen, onClose, onSubmit, account, mode }: AccountModal
         name: account.name,
         type: account.type,
         currency: account.currency,
+        initialBalance: 0,
       });
     } else {
       setFormData({
@@ -61,6 +62,8 @@ const AccountModal = ({ isOpen, onClose, onSubmit, account, mode }: AccountModal
         newErrors.initialBalance = 'Initial balance is required';
       } else if (formData.type === 'CREDIT' && formData.initialBalance > 0) {
         newErrors.initialBalance = 'Credit card balance must be zero or negative';
+      } else if (formData.type !== 'CREDIT' && formData.initialBalance < 0) {
+        newErrors.initialBalance = `${formData.type} accounts cannot start with a negative balance`;
       }
     }
 
@@ -87,11 +90,21 @@ const AccountModal = ({ isOpen, onClose, onSubmit, account, mode }: AccountModal
   };
 
   const handleChange = (field: string, value: string | number) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
+      setErrors((prev) => ({ ...prev, [field]: '' }));
     }
   };
+
+  const balanceHelperText = (() => {
+    if (formData.type === 'CREDIT') {
+      return 'Credit cards must start at 0 (new card) or negative (balance you owe).';
+    }
+    if (formData.type === 'INVESTMENT') {
+      return 'Investment accounts start with cash available to invest. Use 0 if empty.';
+    }
+    return 'Must be 0 or positive.';
+  })();
 
   if (!isOpen) return null;
 
@@ -151,10 +164,16 @@ const AccountModal = ({ isOpen, onClose, onSubmit, account, mode }: AccountModal
               className={`${styles.select} ${errors.currency ? styles.error : ''}`}
               value={formData.currency}
               onChange={(e) => handleChange('currency', e.target.value)}
+              disabled={mode === 'edit'}
             >
               <option value="USD">USD - US Dollar</option>
               <option value="INR">INR - Indian Rupee</option>
             </select>
+            {mode === 'edit' && (
+              <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                Currency cannot be changed after the account is created.
+              </span>
+            )}
           </div>
 
           {mode === 'create' && (
@@ -165,8 +184,10 @@ const AccountModal = ({ isOpen, onClose, onSubmit, account, mode }: AccountModal
                 step="0.01"
                 className={`${styles.input} ${errors.initialBalance ? styles.error : ''}`}
                 placeholder="0.00"
-                value={formData.initialBalance}
-                onChange={(e) => handleChange('initialBalance', parseFloat(e.target.value) || 0)}
+                value={formData.initialBalance ?? 0}
+                onChange={(e) =>
+                  handleChange('initialBalance', parseFloat(e.target.value) || 0)
+                }
               />
               {errors.initialBalance && (
                 <span className={styles.errorMessage}>
@@ -174,11 +195,9 @@ const AccountModal = ({ isOpen, onClose, onSubmit, account, mode }: AccountModal
                   {errors.initialBalance}
                 </span>
               )}
-              {formData.type === 'CREDIT' && (
-                <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
-                  For credit cards, use 0 or negative values
-                </span>
-              )}
+              <span style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>
+                {balanceHelperText}
+              </span>
             </div>
           )}
 

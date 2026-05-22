@@ -1,6 +1,7 @@
 package com.finaltica.application.service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.YearMonth;
 import java.time.ZoneId;
@@ -19,12 +20,16 @@ import com.finaltica.application.dto.ApiResponse;
 import com.finaltica.application.dto.CategorySpendingResponseDTO;
 import com.finaltica.application.dto.MonthlySummaryResponseDTO;
 import com.finaltica.application.dto.NetWorthResponseDTO;
+import com.finaltica.application.dto.PortfolioSummaryResponseDTO;
 import com.finaltica.application.entity.Account;
+import com.finaltica.application.entity.InvestmentMetadata;
 import com.finaltica.application.entity.Transaction;
 import com.finaltica.application.entity.User;
 import com.finaltica.application.enums.AccountType;
+import com.finaltica.application.enums.AssetType;
 import com.finaltica.application.enums.TransactionType;
 import com.finaltica.application.repository.AccountRepository;
+import com.finaltica.application.repository.InvestmentMetadataRepository;
 import com.finaltica.application.repository.TransactionRepository;
 
 @Service
@@ -35,6 +40,9 @@ public class AnalyticsService {
 
 	@Autowired
 	private TransactionRepository transactionRepository;
+
+	@Autowired
+	private InvestmentMetadataRepository investmentMetadataRepository;
 
 	public ResponseEntity<ApiResponse<NetWorthResponseDTO>> getNetWorth(User user) {
 		List<Account> accounts = accountRepository.findByUser(user);
@@ -138,5 +146,62 @@ public class AnalyticsService {
 
 		return ResponseEntity
 				.ok(ApiResponse.success(HttpStatus.OK.value(), "Category spending retrieved successfully", response));
+	}
+
+	public ResponseEntity<ApiResponse<PortfolioSummaryResponseDTO>> getPortfolio(User user) {
+		List<InvestmentMetadata> allMetadata = investmentMetadataRepository.findByUserId(user.getId());
+
+		Map<String, List<InvestmentMetadata>> bySymbol = allMetadata.stream()
+				.collect(Collectors.groupingBy(InvestmentMetadata::getAssetSymbol));
+
+		List<PortfolioSummaryResponseDTO.Holding> holdings = new ArrayList<>();
+		BigDecimal portfolioInvested = BigDecimal.ZERO;
+		BigDecimal portfolioCurrentValue = BigDecimal.ZERO;
+
+		for (Map.Entry<String, List<InvestmentMetadata>> entry : bySymbol.entrySet()) {
+			List<InvestmentMetadata> purchases = entry.getValue();
+
+			BigDecimal totalQuantity = BigDecimal.ZERO;
+			BigDecimal totalInvested = BigDecimal.ZERO;
+			AssetType assetType = purchases.get(0).getAssetType();
+
+			for (InvestmentMetadata m : purchases) {
+				BigDecimal lotCost = m.getQuantity().multiply(m.getPricePerUnit());
+				totalQuantity = totalQuantity.add(m.getQuantity());
+				totalInvested = totalInvested.add(lotCost);
+			}
+
+			BigDecimal avgPrice = totalQuantity.compareTo(BigDecimal.ZERO) > 0
+					? totalInvested.divide(totalQuantity, 4, RoundingMode.HALF_UP)
+					: BigDecimal.ZERO;
+
+			BigDecimal currentPrice = avgPrice;
+			BigDecimal currentValue = totalQuantity.multiply(currentPrice).setScale(2, RoundingMode.HALF_UP);
+			BigDecimal returns = currentValue.subtract(totalInvested).setScale(2, RoundingMode.HALF_UP);
+			BigDecimal returnsPct = totalInvested.compareTo(BigDecimal.ZERO) > 0
+					? returns.multiply(BigDecimal.valueOf(100)).divide(totalInvested, 2, RoundingMode.HALF_UP)
+					: BigDecimal.ZERO;
+
+			holdings.add(PortfolioSummaryResponseDTO.Holding.builder().assetSymbol(entry.getKey()).assetType(assetType)
+					.totalQuantity(totalQuantity).averagePrice(avgPrice)
+					.totalInvested(totalInvested.setScale(2, RoundingMode.HALF_UP)).currentPrice(currentPrice)
+					.currentValue(currentValue).returns(returns).returnsPercentage(returnsPct).build());
+
+			portfolioInvested = portfolioInvested.add(totalInvested);
+			portfolioCurrentValue = portfolioCurrentValue.add(currentValue);
+		}
+
+		BigDecimal totalReturns = portfolioCurrentValue.subtract(portfolioInvested).setScale(2, RoundingMode.HALF_UP);
+		BigDecimal totalReturnsPct = portfolioInvested.compareTo(BigDecimal.ZERO) > 0
+				? totalReturns.multiply(BigDecimal.valueOf(100)).divide(portfolioInvested, 2, RoundingMode.HALF_UP)
+				: BigDecimal.ZERO;
+
+		PortfolioSummaryResponseDTO response = PortfolioSummaryResponseDTO.builder()
+				.totalInvested(portfolioInvested.setScale(2, RoundingMode.HALF_UP))
+				.currentValue(portfolioCurrentValue.setScale(2, RoundingMode.HALF_UP)).totalReturns(totalReturns)
+				.returnsPercentage(totalReturnsPct).holdings(holdings).build();
+
+		return ResponseEntity
+				.ok(ApiResponse.success(HttpStatus.OK.value(), "Portfolio summary retrieved successfully", response));
 	}
 }

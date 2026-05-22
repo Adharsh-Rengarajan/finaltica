@@ -1,6 +1,7 @@
 package com.finaltica.application.service;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -36,6 +37,12 @@ import com.finaltica.application.repository.TransactionRepository;
 @Service
 public class TransactionService {
 
+	private static final BigDecimal MAX_QUANTITY = new BigDecimal("1000000000"); // 1 billion units
+	private static final BigDecimal MAX_PRICE_PER_UNIT = new BigDecimal("10000000"); // $10M per unit
+	private static final BigDecimal MAX_TRANSACTION_AMOUNT = new BigDecimal("1000000000"); // $1B per txn
+
+	private static final Duration FUTURE_DATE_TOLERANCE = Duration.ofDays(1);
+
 	@Autowired
 	private TransactionRepository transactionRepository;
 
@@ -61,9 +68,48 @@ public class TransactionService {
 	public ResponseEntity<ApiResponse<List<TransactionResponseDTO>>> getFilteredTransactions(UUID accountId,
 			UUID categoryId, TransactionType type, Instant startDate, Instant endDate, User user) {
 
+		if (accountId != null) {
+			Account account = accountRepository.findById(accountId).orElse(null);
+			if (account == null) {
+				Map<String, String> errors = new HashMap<>();
+				errors.put("account", "Account not found");
+				return ResponseEntity.status(HttpStatus.NOT_FOUND)
+						.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "Account not found", errors));
+			}
+			if (!account.getUser().getId().equals(user.getId())) {
+				Map<String, String> errors = new HashMap<>();
+				errors.put("authorization", "You don't have access to this account");
+				return ResponseEntity.status(HttpStatus.FORBIDDEN)
+						.body(ApiResponse.error(HttpStatus.FORBIDDEN.value(), "Access denied", errors));
+			}
+		}
+
+		// Same check for categoryId.
+		if (categoryId != null) {
+			Category category = categoryRepository.findById(categoryId).orElse(null);
+			if (category == null) {
+				Map<String, String> errors = new HashMap<>();
+				errors.put("category", "Category not found");
+				return ResponseEntity.status(HttpStatus.NOT_FOUND)
+						.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "Category not found", errors));
+			}
+			if (category.getUser() != null && !category.getUser().getId().equals(user.getId())) {
+				Map<String, String> errors = new HashMap<>();
+				errors.put("authorization", "You don't have access to this category");
+				return ResponseEntity.status(HttpStatus.FORBIDDEN)
+						.body(ApiResponse.error(HttpStatus.FORBIDDEN.value(), "Access denied", errors));
+			}
+		}
+
 		List<Transaction> transactions;
 
 		if (startDate != null && endDate != null) {
+			if (startDate.isAfter(endDate)) {
+				Map<String, String> errors = new HashMap<>();
+				errors.put("dateRange", "startDate must be before or equal to endDate");
+				return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+						.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid date range", errors));
+			}
 			transactions = transactionRepository.findByUserIdAndDateRange(user.getId(), startDate, endDate);
 		} else if (categoryId != null) {
 			transactions = transactionRepository.findByUserIdAndCategoryId(user.getId(), categoryId);
@@ -83,20 +129,62 @@ public class TransactionService {
 	}
 
 	public ResponseEntity<ApiResponse<TransactionResponseDTO>> getTransactionById(UUID id, User user) {
-		Transaction transaction = transactionRepository.findByIdAndAccount_User_Id(id, user.getId())
-				.orElseThrow(() -> new RuntimeException("Transaction not found"));
+		Transaction transaction = transactionRepository.findByIdAndAccount_User_Id(id, user.getId()).orElse(null);
+		if (transaction == null) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("transaction", "Transaction not found");
+			return ResponseEntity.status(HttpStatus.NOT_FOUND)
+					.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "Transaction not found", errors));
+		}
 
 		TransactionResponseDTO transactionDTO = convertToDTO(transaction);
 		return ResponseEntity
 				.ok(ApiResponse.success(HttpStatus.OK.value(), "Transaction retrieved successfully", transactionDTO));
 	}
 
+	public ResponseEntity<ApiResponse<List<InvestmentTransactionResponseDTO>>> getInvestmentTransactions(UUID accountId,
+			User user) {
+
+		List<InvestmentMetadata> metadataList;
+		if (accountId != null) {
+			Account account = accountRepository.findById(accountId).orElse(null);
+			if (account == null) {
+				Map<String, String> errors = new HashMap<>();
+				errors.put("account", "Account not found");
+				return ResponseEntity.status(HttpStatus.NOT_FOUND)
+						.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "Account not found", errors));
+			}
+			if (!account.getUser().getId().equals(user.getId())) {
+				Map<String, String> errors = new HashMap<>();
+				errors.put("authorization", "You don't have access to this account");
+				return ResponseEntity.status(HttpStatus.FORBIDDEN)
+						.body(ApiResponse.error(HttpStatus.FORBIDDEN.value(), "Access denied", errors));
+			}
+			metadataList = investmentMetadataRepository.findByAccountId(accountId);
+		} else {
+			metadataList = investmentMetadataRepository.findByUserId(user.getId());
+		}
+
+		List<InvestmentTransactionResponseDTO> result = metadataList.stream().map(meta -> {
+			return InvestmentTransactionResponseDTO.builder().transaction(convertToDTO(meta.getTransaction()))
+					.investmentMetadata(convertInvestmentMetadataToDTO(meta)).build();
+		}).collect(Collectors.toList());
+
+		return ResponseEntity.ok(
+				ApiResponse.success(HttpStatus.OK.value(), "Investment transactions retrieved successfully", result));
+	}
+
 	@Transactional
 	public ResponseEntity<ApiResponse<TransactionResponseDTO>> createTransaction(CreateTransactionRequestDTO request,
 			User user) {
 
-		Account account = accountRepository.findById(request.getAccountId())
-				.orElseThrow(() -> new RuntimeException("Account not found"));
+		Account account = accountRepository.findById(request.getAccountId()).orElse(null);
+		if (account == null) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("account", "Account not found");
+			return ResponseEntity.status(HttpStatus.NOT_FOUND)
+					.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "Account not found", errors));
+		}
 
 		if (!account.getUser().getId().equals(user.getId())) {
 			Map<String, String> errors = new HashMap<>();
@@ -107,7 +195,7 @@ public class TransactionService {
 
 		if (request.getType() == TransactionType.TRANSFER) {
 			Map<String, String> errors = new HashMap<>();
-			errors.put("type", "Use transfer endpoint for transfer transactions");
+			errors.put("type", "Use the transfer endpoint for transfer transactions");
 			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
 					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid transaction type", errors));
 		}
@@ -121,11 +209,41 @@ public class TransactionService {
 					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid amount", errors));
 		}
 
+		if (request.getAmount().abs().compareTo(MAX_TRANSACTION_AMOUNT) > 0) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("amount", "Amount exceeds maximum allowed (" + MAX_TRANSACTION_AMOUNT.toPlainString() + ")");
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Amount too large", errors));
+		}
+
+		ResponseEntity<ApiResponse<TransactionResponseDTO>> dateErr = validateTransactionDate(
+				request.getTransactionDate());
+		if (dateErr != null) {
+			return dateErr;
+		}
+
+		if (request.getType() == TransactionType.EXPENSE && account.getType() != AccountType.CREDIT) {
+			BigDecimal projectedBalance = account.getCurrentBalance().add(request.getAmount());
+			if (projectedBalance.compareTo(BigDecimal.ZERO) < 0) {
+				Map<String, String> errors = new HashMap<>();
+				errors.put("amount",
+						String.format("Insufficient balance. Available: %s %s, required: %s %s",
+								account.getCurrentBalance().toPlainString(), account.getCurrency(),
+								request.getAmount().abs().toPlainString(), account.getCurrency()));
+				return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+						.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Insufficient balance", errors));
+			}
+		}
+
 		Category category = null;
 		if (request.getCategoryId() != null) {
-			category = categoryRepository.findById(request.getCategoryId())
-					.orElseThrow(() -> new RuntimeException("Category not found"));
-
+			category = categoryRepository.findById(request.getCategoryId()).orElse(null);
+			if (category == null) {
+				Map<String, String> errors = new HashMap<>();
+				errors.put("category", "Category not found");
+				return ResponseEntity.status(HttpStatus.NOT_FOUND)
+						.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "Category not found", errors));
+			}
 			if (category.getUser() != null && !category.getUser().getId().equals(user.getId())) {
 				Map<String, String> errors = new HashMap<>();
 				errors.put("category", "You don't have access to this category");
@@ -152,11 +270,21 @@ public class TransactionService {
 	public ResponseEntity<ApiResponse<Map<String, TransactionResponseDTO>>> createTransfer(
 			CreateTransferRequestDTO request, User user) {
 
-		Account fromAccount = accountRepository.findById(request.getFromAccountId())
-				.orElseThrow(() -> new RuntimeException("From account not found"));
+		Account fromAccount = accountRepository.findById(request.getFromAccountId()).orElse(null);
+		if (fromAccount == null) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("fromAccountId", "From account not found");
+			return ResponseEntity.status(HttpStatus.NOT_FOUND)
+					.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "From account not found", errors));
+		}
 
-		Account toAccount = accountRepository.findById(request.getToAccountId())
-				.orElseThrow(() -> new RuntimeException("To account not found"));
+		Account toAccount = accountRepository.findById(request.getToAccountId()).orElse(null);
+		if (toAccount == null) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("toAccountId", "To account not found");
+			return ResponseEntity.status(HttpStatus.NOT_FOUND)
+					.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "To account not found", errors));
+		}
 
 		if (!fromAccount.getUser().getId().equals(user.getId()) || !toAccount.getUser().getId().equals(user.getId())) {
 			Map<String, String> errors = new HashMap<>();
@@ -170,6 +298,55 @@ public class TransactionService {
 			errors.put("accounts", "Cannot transfer to the same account");
 			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
 					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid transfer", errors));
+		}
+
+		if (request.getAmount() == null || request.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("amount", "Transfer amount must be greater than zero");
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid amount", errors));
+		}
+
+		if (request.getAmount().compareTo(MAX_TRANSACTION_AMOUNT) > 0) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("amount", "Amount exceeds maximum allowed");
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Amount too large", errors));
+		}
+
+		if (fromAccount.getType() == AccountType.CREDIT) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("fromAccountId",
+					"Cannot transfer out of a credit card account. Pay it down with a regular transfer to it instead.");
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid source account", errors));
+		}
+
+		// Cross-currency transfers without an FX rate would silently mix currencies.
+		if (fromAccount.getCurrency() != toAccount.getCurrency()) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("accounts", String.format("Cannot transfer between accounts in different currencies (%s -> %s)",
+					fromAccount.getCurrency(), toAccount.getCurrency()));
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Currency mismatch", errors));
+		}
+
+		// Date sanity check.
+		ResponseEntity<ApiResponse<Map<String, TransactionResponseDTO>>> dateErr = validateTransactionDate(
+				request.getTransactionDate());
+		if (dateErr != null) {
+			return dateErr;
+		}
+
+		BigDecimal projectedBalance = fromAccount.getCurrentBalance().subtract(request.getAmount());
+		if (projectedBalance.compareTo(BigDecimal.ZERO) < 0) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("amount",
+					String.format("Insufficient balance in '%s'. Available: %s %s, required: %s %s",
+							fromAccount.getName(), fromAccount.getCurrentBalance().toPlainString(),
+							fromAccount.getCurrency(), request.getAmount().toPlainString(), fromAccount.getCurrency()));
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Insufficient balance", errors));
 		}
 
 		fromAccount.setCurrentBalance(fromAccount.getCurrentBalance().subtract(request.getAmount()));
@@ -211,8 +388,13 @@ public class TransactionService {
 	public ResponseEntity<ApiResponse<InvestmentTransactionResponseDTO>> createInvestmentTransaction(
 			CreateInvestmentTransactionRequestDTO request, User user) {
 
-		Account account = accountRepository.findById(request.getAccountId())
-				.orElseThrow(() -> new RuntimeException("Account not found"));
+		Account account = accountRepository.findById(request.getAccountId()).orElse(null);
+		if (account == null) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("account", "Account not found");
+			return ResponseEntity.status(HttpStatus.NOT_FOUND)
+					.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "Account not found", errors));
+		}
 
 		if (!account.getUser().getId().equals(user.getId())) {
 			Map<String, String> errors = new HashMap<>();
@@ -228,21 +410,81 @@ public class TransactionService {
 					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid account type", errors));
 		}
 
-		BigDecimal totalAmount = request.getPricePerUnit().multiply(request.getQuantity()).negate();
+		if (request.getQuantity() == null || request.getQuantity().compareTo(BigDecimal.ZERO) <= 0) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("quantity", "Quantity must be greater than zero");
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid quantity", errors));
+		}
+		// Issue #12: cap quantity and price-per-unit so garbage requests can't
+		// land enormous synthetic positions.
+		if (request.getQuantity().compareTo(MAX_QUANTITY) > 0) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("quantity", "Quantity exceeds maximum allowed (" + MAX_QUANTITY.toPlainString() + ")");
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Quantity too large", errors));
+		}
+		if (request.getPricePerUnit() == null || request.getPricePerUnit().compareTo(BigDecimal.ZERO) <= 0) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("pricePerUnit", "Price per unit must be greater than zero");
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid price", errors));
+		}
+		if (request.getPricePerUnit().compareTo(MAX_PRICE_PER_UNIT) > 0) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("pricePerUnit",
+					"Price per unit exceeds maximum allowed (" + MAX_PRICE_PER_UNIT.toPlainString() + ")");
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Price too large", errors));
+		}
+		if (request.getAssetSymbol() == null || request.getAssetSymbol().trim().isEmpty()) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("assetSymbol", "Asset symbol is required");
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid asset symbol", errors));
+		}
 
-		Transaction transaction = Transaction.builder().account(account).amount(totalAmount)
+		// Date sanity check.
+		ResponseEntity<ApiResponse<InvestmentTransactionResponseDTO>> dateErr = validateTransactionDate(
+				request.getTransactionDate());
+		if (dateErr != null) {
+			return dateErr;
+		}
+
+		BigDecimal totalCost = request.getPricePerUnit().multiply(request.getQuantity());
+		if (totalCost.compareTo(MAX_TRANSACTION_AMOUNT) > 0) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("amount", "Total cost exceeds maximum allowed transaction amount");
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Total cost too large", errors));
+		}
+		BigDecimal signedAmount = totalCost.negate();
+
+		BigDecimal projectedBalance = account.getCurrentBalance().add(signedAmount);
+		if (projectedBalance.compareTo(BigDecimal.ZERO) < 0) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("amount",
+					String.format(
+							"Insufficient balance in '%s'. Available: %s %s, required: %s %s. Transfer funds in first.",
+							account.getName(), account.getCurrentBalance().toPlainString(), account.getCurrency(),
+							totalCost.toPlainString(), account.getCurrency()));
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Insufficient balance", errors));
+		}
+
+		Transaction transaction = Transaction.builder().account(account).amount(signedAmount)
 				.type(TransactionType.EXPENSE).description(request.getDescription())
 				.transactionDate(request.getTransactionDate()).paymentMode(request.getPaymentMode()).build();
 
 		Transaction savedTransaction = transactionRepository.save(transaction);
 
 		InvestmentMetadata metadata = InvestmentMetadata.builder().transaction(savedTransaction)
-				.assetSymbol(request.getAssetSymbol()).assetType(request.getAssetType()).quantity(request.getQuantity())
-				.pricePerUnit(request.getPricePerUnit()).build();
+				.assetSymbol(request.getAssetSymbol().trim().toUpperCase()).assetType(request.getAssetType())
+				.quantity(request.getQuantity()).pricePerUnit(request.getPricePerUnit()).build();
 
 		InvestmentMetadata savedMetadata = investmentMetadataRepository.save(metadata);
 
-		account.setCurrentBalance(account.getCurrentBalance().add(totalAmount));
+		account.setCurrentBalance(account.getCurrentBalance().add(signedAmount));
 		accountRepository.save(account);
 
 		InvestmentTransactionResponseDTO responseDTO = InvestmentTransactionResponseDTO.builder()
@@ -255,8 +497,13 @@ public class TransactionService {
 
 	@Transactional
 	public ResponseEntity<ApiResponse<Void>> deleteTransaction(UUID id, User user) {
-		Transaction transaction = transactionRepository.findByIdAndAccount_User_Id(id, user.getId())
-				.orElseThrow(() -> new RuntimeException("Transaction not found"));
+		Transaction transaction = transactionRepository.findByIdAndAccount_User_Id(id, user.getId()).orElse(null);
+		if (transaction == null) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("transaction", "Transaction not found");
+			return ResponseEntity.status(HttpStatus.NOT_FOUND)
+					.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "Transaction not found", errors));
+		}
 
 		if (transaction.getType() == TransactionType.TRANSFER) {
 			Map<String, String> errors = new HashMap<>();
@@ -265,6 +512,9 @@ public class TransactionService {
 					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid operation", errors));
 		}
 
+		investmentMetadataRepository.findByTransactionId(transaction.getId())
+				.ifPresent(investmentMetadataRepository::delete);
+
 		Account account = transaction.getAccount();
 		account.setCurrentBalance(account.getCurrentBalance().subtract(transaction.getAmount()));
 		accountRepository.save(account);
@@ -272,6 +522,25 @@ public class TransactionService {
 		transactionRepository.delete(transaction);
 
 		return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Transaction deleted successfully", null));
+	}
+
+	/**
+	 * Reject transactions dated more than {@link #FUTURE_DATE_TOLERANCE} in the
+	 * future. Returns null if the date is OK, or a 400 ResponseEntity if it isn't.
+	 * Generic so it can be returned from any of the create-* methods.
+	 */
+	private <T> ResponseEntity<ApiResponse<T>> validateTransactionDate(Instant transactionDate) {
+		if (transactionDate == null) {
+			return null;
+		}
+		Instant cutoff = Instant.now().plus(FUTURE_DATE_TOLERANCE);
+		if (transactionDate.isAfter(cutoff)) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("transactionDate", "Transaction date cannot be in the future");
+			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid transaction date", errors));
+		}
+		return null;
 	}
 
 	private TransactionResponseDTO convertToDTO(Transaction transaction) {

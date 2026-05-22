@@ -178,6 +178,14 @@
   font-weight: 600;
 }
 
+.mockupImage {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 12px;
+  object-fit: cover;
+}
+
 @media (max-width: 968px) {
   .container {
     grid-template-columns: 1fr;

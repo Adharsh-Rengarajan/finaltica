@@ -5,7 +5,6 @@ import java.math.BigDecimal;
 import com.finaltica.application.enums.AccountType;
 import com.finaltica.application.enums.CurrencyCode;
 
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -29,6 +28,5 @@ public class CreateAccountRequestDTO {
 	private CurrencyCode currency;
 
 	@NotNull(message = "Initial balance is required")
-	@DecimalMin(value = "0.0", inclusive = false, message = "Initial balance must be greater than 0")
 	private BigDecimal initialBalance;
 }

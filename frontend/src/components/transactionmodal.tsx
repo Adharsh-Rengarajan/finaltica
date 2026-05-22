@@ -1,6 +1,7 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { X, AlertCircle, ArrowDown, ArrowUp, ArrowLeftRight } from 'lucide-react';
 import { Account, Category, TransactionType, PaymentMode } from '@typings/index';
+import { formatCurrency } from '@utils/formatters';
 import styles from '@styles/transactionmodal.module.css';
 
 interface TransactionModalProps {
@@ -25,7 +26,7 @@ export interface TransactionFormData {
 
 const TransactionModal = ({ isOpen, onClose, onSubmit, accounts, categories }: TransactionModalProps) => {
   const [activeTab, setActiveTab] = useState<'transaction' | 'transfer'>('transaction');
-  
+
   const [formData, setFormData] = useState<TransactionFormData>({
     accountId: '',
     categoryId: '',
@@ -87,6 +88,15 @@ const TransactionModal = ({ isOpen, onClose, onSubmit, accounts, categories }: T
       newErrors.transactionDate = 'Date is required';
     }
 
+    if (formData.type === 'EXPENSE' && formData.accountId && formData.amount > 0) {
+      const acct = accounts.find((a) => a.id === formData.accountId);
+      if (acct && acct.type !== 'CREDIT' && formData.amount > Number(acct.currentBalance)) {
+        newErrors.amount = `Insufficient balance in '${acct.name}'. Available: ${formatCurrency(
+          Number(acct.currentBalance)
+        )}, required: ${formatCurrency(formData.amount)}`;
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -102,12 +112,27 @@ const TransactionModal = ({ isOpen, onClose, onSubmit, accounts, categories }: T
       newErrors.toAccountId = 'To account is required';
     }
 
-    if (transferData.fromAccountId === transferData.toAccountId) {
+    if (transferData.fromAccountId && transferData.fromAccountId === transferData.toAccountId) {
       newErrors.toAccountId = 'Cannot transfer to the same account';
     }
 
     if (transferData.amount <= 0) {
       newErrors.amount = 'Amount must be greater than 0';
+    }
+
+    if (transferData.fromAccountId && transferData.amount > 0) {
+      const fromAcct = accounts.find((a) => a.id === transferData.fromAccountId);
+      if (fromAcct && fromAcct.type === 'CREDIT') {
+        newErrors.fromAccountId = 'Cannot transfer out of a credit card account.';
+      } else if (
+        fromAcct &&
+        fromAcct.type !== 'CREDIT' &&
+        transferData.amount > Number(fromAcct.currentBalance)
+      ) {
+        newErrors.amount = `Insufficient balance in '${fromAcct.name}'. Available: ${formatCurrency(
+          Number(fromAcct.currentBalance)
+        )}, required: ${formatCurrency(transferData.amount)}`;
+      }
     }
 
     setErrors(newErrors);
@@ -158,6 +183,8 @@ const TransactionModal = ({ isOpen, onClose, onSubmit, accounts, categories }: T
     if (formData.type === 'EXPENSE') return cat.type === 'EXPENSE';
     return false;
   });
+
+  const maxDate = new Date().toISOString().slice(0, 16);
 
   if (!isOpen) return null;
 
@@ -301,6 +328,7 @@ const TransactionModal = ({ isOpen, onClose, onSubmit, accounts, categories }: T
                   type="datetime-local"
                   className={`${styles.input} ${errors.transactionDate ? styles.error : ''}`}
                   value={formData.transactionDate}
+                  max={maxDate}
                   onChange={(e) => setFormData(prev => ({ ...prev, transactionDate: e.target.value }))}
                 />
                 {errors.transactionDate && (
@@ -410,6 +438,7 @@ const TransactionModal = ({ isOpen, onClose, onSubmit, accounts, categories }: T
                   type="datetime-local"
                   className={styles.input}
                   value={transferData.transactionDate}
+                  max={maxDate}
                   onChange={(e) => setTransferData(prev => ({ ...prev, transactionDate: e.target.value }))}
                 />
               </div>

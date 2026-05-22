@@ -22,6 +22,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -68,4 +69,9 @@ public class Account {
 	@Column(name = "updated_at", nullable = false)
 	@Builder.Default
 	private Instant updatedAt = Instant.now();
+
+	@Version
+	@Column(name = "version", nullable = false)
+	@Builder.Default
+	private Long version = 0L;
 }

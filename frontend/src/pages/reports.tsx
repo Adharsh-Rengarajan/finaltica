@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Calendar, CalendarRange, FileText, Download, Loader, CheckCircle } from 'lucide-react';
 import api from '@config/api';
 import API_ENDPOINTS from '@config/endpoints';
+import ErrorBanner from '@components/errorbanner';
 import { ApiResponse } from '@typings/index';
 import styles from '@styles/reports.module.css';
 
@@ -14,9 +15,10 @@ interface GeneratedReport {
 const Reports = () => {
   const [monthlyReport, setMonthlyReport] = useState<GeneratedReport | null>(null);
   const [customReport, setCustomReport] = useState<GeneratedReport | null>(null);
-  
+
   const [monthlyLoading, setMonthlyLoading] = useState(false);
   const [customLoading, setCustomLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [monthlyForm, setMonthlyForm] = useState({
     year: new Date().getFullYear().toString(),
@@ -31,13 +33,11 @@ const Reports = () => {
   const handleGenerateMonthly = async () => {
     try {
       setMonthlyLoading(true);
-      console.log('[REPORTS] Generating monthly report:', monthlyForm);
+      setError(null);
 
       const response = await api.get<ApiResponse<{ downloadUrl: string }>>(
         `${API_ENDPOINTS.REPORTS.MONTHLY}?year=${monthlyForm.year}&month=${monthlyForm.month}`
       );
-
-      console.log('[REPORTS] Monthly report generated:', response.data);
 
       const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const reportName = `${monthNames[parseInt(monthlyForm.month) - 1]} ${monthlyForm.year} Statement`;
@@ -47,9 +47,11 @@ const Reports = () => {
         reportName,
         generatedAt: new Date(),
       });
-    } catch (error: any) {
-      console.error('[REPORTS] Error generating monthly report:', error);
-      alert(error.response?.data?.message || 'Failed to generate report');
+    } catch (err: any) {
+      console.error('[REPORTS] Error generating monthly report:', err);
+      const errs = err.response?.data?.errors;
+      const detail = errs?.month || errs?.year;
+      setError(detail || err.response?.data?.message || 'Failed to generate report');
     } finally {
       setMonthlyLoading(false);
     }
@@ -57,13 +59,18 @@ const Reports = () => {
 
   const handleGenerateCustom = async () => {
     if (!customForm.startDate || !customForm.endDate) {
-      alert('Please select both start and end dates');
+      setError('Please select both start and end dates');
+      return;
+    }
+
+    if (new Date(customForm.startDate) >= new Date(customForm.endDate)) {
+      setError('Start date must be before end date');
       return;
     }
 
     try {
       setCustomLoading(true);
-      console.log('[REPORTS] Generating custom report:', customForm);
+      setError(null);
 
       const startDate = new Date(customForm.startDate).toISOString();
       const endDate = new Date(customForm.endDate).toISOString();
@@ -72,8 +79,6 @@ const Reports = () => {
         `${API_ENDPOINTS.REPORTS.CUSTOM}?startDate=${startDate}&endDate=${endDate}`
       );
 
-      console.log('[REPORTS] Custom report generated:', response.data);
-
       const reportName = `Custom Report (${customForm.startDate} to ${customForm.endDate})`;
 
       setCustomReport({
@@ -81,9 +86,11 @@ const Reports = () => {
         reportName,
         generatedAt: new Date(),
       });
-    } catch (error: any) {
-      console.error('[REPORTS] Error generating custom report:', error);
-      alert(error.response?.data?.message || 'Failed to generate report');
+    } catch (err: any) {
+      console.error('[REPORTS] Error generating custom report:', err);
+      const errs = err.response?.data?.errors;
+      const detail = errs?.dateRange;
+      setError(detail || err.response?.data?.message || 'Failed to generate report');
     } finally {
       setCustomLoading(false);
     }
@@ -106,15 +113,18 @@ const Reports = () => {
     { value: '12', label: 'December' },
   ];
 
+  const today = new Date().toISOString().slice(0, 10);
+
   return (
     <div className={styles.reports}>
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+
       <div className={styles.header}>
         <h1 className={styles.title}>Financial Reports</h1>
         <p className={styles.subtitle}>Generate and download PDF statements</p>
       </div>
 
       <div className={styles.reportsGrid}>
-        {/* Monthly Report */}
         <div className={styles.reportCard}>
           <div className={styles.reportHeader}>
             <div
@@ -210,7 +220,6 @@ const Reports = () => {
           )}
         </div>
 
-        {/* Custom Date Range Report */}
         <div className={styles.reportCard}>
           <div className={styles.reportHeader}>
             <div
@@ -222,7 +231,7 @@ const Reports = () => {
             <div className={styles.reportInfo}>
               <h2 className={styles.reportTitle}>Custom Report</h2>
               <p className={styles.reportDescription}>
-                Generate a report for any date range with detailed transaction breakdowns
+                Generate a report for any date range with detailed transaction breakdowns (max 366 days)
               </p>
             </div>
           </div>
@@ -234,6 +243,7 @@ const Reports = () => {
                 type="date"
                 className={styles.input}
                 value={customForm.startDate}
+                max={today}
                 onChange={(e) => setCustomForm(prev => ({ ...prev, startDate: e.target.value }))}
               />
             </div>
@@ -244,6 +254,7 @@ const Reports = () => {
                 type="date"
                 className={styles.input}
                 value={customForm.endDate}
+                max={today}
                 onChange={(e) => setCustomForm(prev => ({ ...prev, endDate: e.target.value }))}
               />
             </div>

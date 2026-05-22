@@ -1,17 +1,25 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, DollarSign, ArrowDownCircle, Plus, Loader, Eye, Trash2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, ArrowDownCircle, Plus, Loader, Trash2 } from 'lucide-react';
 import api from '@config/api';
 import API_ENDPOINTS from '@config/endpoints';
 import SummaryCard from '@components/summarycard';
 import InvestmentModal, { InvestmentFormData } from '@components/investmentmodal';
-import { Account, Transaction, InvestmentTransaction, ApiResponse } from '@typings/index';
+import ErrorBanner from '@components/errorbanner';
+import {
+  Account,
+  InvestmentTransaction,
+  PortfolioSummary,
+  ApiResponse,
+} from '@typings/index';
 import { formatCurrency } from '@utils/formatters';
 import styles from '@styles/investments.module.css';
 
 const Investments = () => {
   const [investmentAccounts, setInvestmentAccounts] = useState<Account[]>([]);
   const [investmentTransactions, setInvestmentTransactions] = useState<InvestmentTransaction[]>([]);
+  const [portfolio, setPortfolio] = useState<PortfolioSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -20,102 +28,113 @@ const Investments = () => {
   }, []);
 
   useEffect(() => {
-    if (selectedAccountId) {
-      filterByAccount();
-    } else {
-      fetchInvestmentTransactions();
-    }
+    fetchInvestmentTransactions(selectedAccountId);
   }, [selectedAccountId]);
 
   const fetchData = async () => {
     try {
       setLoading(true);
-      console.log('[INVESTMENTS] Fetching data');
+      setError(null);
 
-      const accountsRes = await api.get<ApiResponse<Account[]>>(
-        `${API_ENDPOINTS.ACCOUNTS.BASE}?type=INVESTMENT`
-      );
+      const [accountsRes, portfolioRes] = await Promise.all([
+        api.get<ApiResponse<Account[]>>(`${API_ENDPOINTS.ACCOUNTS.BASE}?type=INVESTMENT`),
+        api.get<ApiResponse<PortfolioSummary>>(API_ENDPOINTS.ANALYTICS.PORTFOLIO),
+      ]);
 
-      console.log('[INVESTMENTS] Investment accounts fetched:', accountsRes.data.data.length);
       setInvestmentAccounts(accountsRes.data.data);
+      setPortfolio(portfolioRes.data.data);
 
-      await fetchInvestmentTransactions();
-    } catch (error: any) {
-      console.error('[INVESTMENTS] Error fetching data:', error);
+      await fetchInvestmentTransactions(selectedAccountId);
+    } catch (err: any) {
+      console.error('[INVESTMENTS] Error fetching data:', err);
+      setError(
+        err.response?.data?.message ||
+          'Could not load investments. Please refresh or try again later.'
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchInvestmentTransactions = async () => {
+  const fetchInvestmentTransactions = async (accountId?: string) => {
     try {
-      const response = await api.get<ApiResponse<Transaction[]>>(API_ENDPOINTS.TRANSACTIONS.BASE);
-      
-      // Filter for investment transactions only (those with investment metadata)
-      const allTransactions = response.data.data;
-      
-      // For now, we'll just show all transactions from investment accounts
-      // In a real app, you'd fetch only investment transactions with metadata
-      const investmentTxns = allTransactions.filter(t => {
-        const account = investmentAccounts.find(a => a.id === t.accountId);
-        return account?.type === 'INVESTMENT';
-      });
+      const url = accountId
+        ? `${API_ENDPOINTS.TRANSACTIONS.INVESTMENTS}?accountId=${accountId}`
+        : API_ENDPOINTS.TRANSACTIONS.INVESTMENTS;
 
-      console.log('[INVESTMENTS] Investment transactions:', investmentTxns.length);
-      
-      // Convert to InvestmentTransaction type (simplified for now)
+      const response = await api.get<ApiResponse<InvestmentTransaction[]>>(url);
+      setInvestmentTransactions(response.data.data);
+    } catch (err: any) {
+      console.error('[INVESTMENTS] Error fetching investment transactions:', err);
       setInvestmentTransactions([]);
-    } catch (error: any) {
-      console.error('[INVESTMENTS] Error fetching transactions:', error);
     }
   };
 
-  const filterByAccount = async () => {
-    if (!selectedAccountId) {
-      fetchInvestmentTransactions();
-      return;
-    }
-
+  const refreshPortfolio = async () => {
     try {
-      const response = await api.get<ApiResponse<Transaction[]>>(
-        `${API_ENDPOINTS.TRANSACTIONS.BASE}?accountId=${selectedAccountId}`
+      const portfolioRes = await api.get<ApiResponse<PortfolioSummary>>(
+        API_ENDPOINTS.ANALYTICS.PORTFOLIO
       );
-      
-      console.log('[INVESTMENTS] Filtered transactions:', response.data.data.length);
-      setInvestmentTransactions([]);
-    } catch (error: any) {
-      console.error('[INVESTMENTS] Error filtering transactions:', error);
+      setPortfolio(portfolioRes.data.data);
+    } catch (err) {
+      console.error('[INVESTMENTS] Error refreshing portfolio:', err);
     }
   };
 
   const handleBuyInvestment = async (data: InvestmentFormData) => {
     try {
-      console.log('[INVESTMENTS] Buying investment:', data);
-
       await api.post<ApiResponse<InvestmentTransaction>>(
         API_ENDPOINTS.TRANSACTIONS.INVESTMENT,
         data
       );
 
-      console.log('[INVESTMENTS] Investment purchased successfully');
-      await fetchData();
-    } catch (error: any) {
-      console.error('[INVESTMENTS] Error buying investment:', error);
-      alert(error.response?.data?.message || 'Failed to purchase investment');
-      throw error;
+      const accountsRes = await api.get<ApiResponse<Account[]>>(
+        `${API_ENDPOINTS.ACCOUNTS.BASE}?type=INVESTMENT`
+      );
+      setInvestmentAccounts(accountsRes.data.data);
+      await Promise.all([refreshPortfolio(), fetchInvestmentTransactions(selectedAccountId)]);
+    } catch (err: any) {
+      console.error('[INVESTMENTS] Error buying investment:', err);
+      const errs = err.response?.data?.errors;
+      const detail =
+        errs?.amount ||
+        errs?.account ||
+        errs?.quantity ||
+        errs?.pricePerUnit ||
+        errs?.assetSymbol ||
+        errs?.authorization;
+      alert(detail || err.response?.data?.message || 'Failed to purchase investment');
+      throw err;
     }
   };
 
-  const calculatePortfolioSummary = () => {
-    const totalValue = investmentAccounts.reduce((sum, acc) => sum + acc.currentBalance, 0);
-    return {
-      totalValue,
-      totalInvested: 0,
-      totalReturns: 0,
-    };
+  const handleDeleteInvestment = async (transactionId: string) => {
+    if (!confirm('Delete this investment purchase? The account balance will be restored.')) {
+      return;
+    }
+    try {
+      await api.delete(API_ENDPOINTS.TRANSACTIONS.BY_ID(transactionId));
+      const accountsRes = await api.get<ApiResponse<Account[]>>(
+        `${API_ENDPOINTS.ACCOUNTS.BASE}?type=INVESTMENT`
+      );
+      setInvestmentAccounts(accountsRes.data.data);
+      await Promise.all([refreshPortfolio(), fetchInvestmentTransactions(selectedAccountId)]);
+    } catch (err: any) {
+      console.error('[INVESTMENTS] Error deleting investment:', err);
+      alert(err.response?.data?.message || 'Failed to delete investment');
+    }
   };
 
-  const summary = calculatePortfolioSummary();
+  const accountCashValue = investmentAccounts.reduce(
+    (sum, acc) => sum + Number(acc.currentBalance || 0),
+    0
+  );
+  const holdingsValue = portfolio?.currentValue ?? 0;
+  const totalInvested = portfolio?.totalInvested ?? 0;
+  const totalReturns = portfolio?.totalReturns ?? 0;
+  const returnsPct = portfolio?.returnsPercentage ?? 0;
+  const totalPortfolioValue = accountCashValue + holdingsValue;
+  const returnsPositive = totalReturns >= 0;
 
   if (loading) {
     return (
@@ -127,6 +146,8 @@ const Investments = () => {
 
   return (
     <div className={styles.investments}>
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+
       <div className={styles.header}>
         <div className={styles.headerLeft}>
           <h1 className={styles.title}>Investment Portfolio</h1>
@@ -139,53 +160,62 @@ const Investments = () => {
             onChange={(e) => setSelectedAccountId(e.target.value)}
           >
             <option value="">All Investment Accounts</option>
-            {investmentAccounts.map(account => (
+            {investmentAccounts.map((account) => (
               <option key={account.id} value={account.id}>
                 {account.name}
               </option>
             ))}
           </select>
-          <button className={styles.buyButton} onClick={() => setModalOpen(true)}>
+          <button
+            className={styles.buyButton}
+            onClick={() => setModalOpen(true)}
+            disabled={investmentAccounts.length === 0}
+            title={
+              investmentAccounts.length === 0
+                ? 'Create an investment account first'
+                : 'Buy a stock or mutual fund'
+            }
+          >
             <TrendingUp size={20} />
             Buy Investment
           </button>
         </div>
       </div>
 
-      {/* Portfolio Summary */}
       <div className={styles.summaryCards}>
         <SummaryCard
           title="Total Portfolio Value"
-          value={formatCurrency(summary.totalValue)}
+          value={formatCurrency(totalPortfolioValue)}
           icon={DollarSign}
           iconBg="#dcfce7"
           iconColor="#166534"
         />
         <SummaryCard
           title="Total Invested"
-          value={formatCurrency(summary.totalInvested)}
+          value={formatCurrency(totalInvested)}
           icon={ArrowDownCircle}
           iconBg="#dbeafe"
           iconColor="#1e40af"
         />
         <SummaryCard
           title="Total Returns"
-          value={formatCurrency(summary.totalReturns)}
-          change={summary.totalReturns > 0 ? '+0.0%' : '0.0%'}
-          changeType={summary.totalReturns > 0 ? 'positive' : 'neutral'}
-          icon={TrendingUp}
-          iconBg="#dcfce7"
-          iconColor="#166534"
+          value={formatCurrency(totalReturns)}
+          change={`${returnsPositive ? '+' : ''}${returnsPct.toFixed(2)}%`}
+          changeType={
+            totalReturns > 0 ? 'positive' : totalReturns < 0 ? 'negative' : 'neutral'
+          }
+          icon={returnsPositive ? TrendingUp : TrendingDown}
+          iconBg={returnsPositive ? '#dcfce7' : '#fee2e2'}
+          iconColor={returnsPositive ? '#166534' : '#991b1b'}
         />
       </div>
 
-      {/* Holdings Table */}
       <div className={styles.tableCard}>
         <div className={styles.tableHeader}>
           <h2 className={styles.tableTitle}>Portfolio Holdings</h2>
         </div>
 
-        {investmentTransactions.length > 0 ? (
+        {portfolio && portfolio.holdings.length > 0 ? (
           <div className={styles.tableWrapper}>
             <table className={styles.table}>
               <thead>
@@ -194,13 +224,30 @@ const Investments = () => {
                   <th>Asset Type</th>
                   <th>Quantity</th>
                   <th>Avg Price</th>
-                  <th>Total Value</th>
+                  <th>Total Invested</th>
+                  <th>Current Value</th>
                   <th>Return</th>
-                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {/* Holdings will be displayed here */}
+                {portfolio.holdings.map((h) => {
+                  const positive = h.returns >= 0;
+                  return (
+                    <tr key={h.assetSymbol}>
+                      <td><strong>{h.assetSymbol}</strong></td>
+                      <td>{h.assetType === 'STOCK' ? 'Stock' : 'Mutual Fund'}</td>
+                      <td>{Number(h.totalQuantity).toFixed(4)}</td>
+                      <td>{formatCurrency(h.averagePrice)}</td>
+                      <td>{formatCurrency(h.totalInvested)}</td>
+                      <td>{formatCurrency(h.currentValue)}</td>
+                      <td style={{ color: positive ? '#166534' : '#991b1b', fontWeight: 600 }}>
+                        {positive ? '+' : ''}
+                        {formatCurrency(h.returns)} ({positive ? '+' : ''}
+                        {Number(h.returnsPercentage).toFixed(2)}%)
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -213,13 +260,66 @@ const Investments = () => {
                 ? 'Create an investment account first, then start buying stocks or mutual funds'
                 : 'Purchase your first investment to start building your portfolio'}
             </p>
-            <button className={styles.buyButton} onClick={() => setModalOpen(true)}>
-              <Plus size={20} />
-              Buy Investment
-            </button>
+            {investmentAccounts.length > 0 && (
+              <button className={styles.buyButton} onClick={() => setModalOpen(true)}>
+                <Plus size={20} />
+                Buy Investment
+              </button>
+            )}
           </div>
         )}
       </div>
+
+      {investmentTransactions.length > 0 && (
+        <div className={styles.tableCard} style={{ marginTop: '1.5rem' }}>
+          <div className={styles.tableHeader}>
+            <h2 className={styles.tableTitle}>Purchase History</h2>
+          </div>
+          <div className={styles.tableWrapper}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Symbol</th>
+                  <th>Type</th>
+                  <th>Quantity</th>
+                  <th>Price/Unit</th>
+                  <th>Total Cost</th>
+                  <th>Account</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {investmentTransactions.map((it) => (
+                  <tr key={it.transaction.id}>
+                    <td>{new Date(it.transaction.transactionDate).toLocaleDateString()}</td>
+                    <td><strong>{it.investmentMetadata.assetSymbol}</strong></td>
+                    <td>{it.investmentMetadata.assetType === 'STOCK' ? 'Stock' : 'Mutual Fund'}</td>
+                    <td>{Number(it.investmentMetadata.quantity).toFixed(4)}</td>
+                    <td>{formatCurrency(it.investmentMetadata.pricePerUnit)}</td>
+                    <td>{formatCurrency(it.investmentMetadata.totalAmount)}</td>
+                    <td>{it.transaction.accountName}</td>
+                    <td>
+                      <button
+                        onClick={() => handleDeleteInvestment(it.transaction.id)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                        }}
+                        title="Delete purchase"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <InvestmentModal
         isOpen={modalOpen}

@@ -5,7 +5,8 @@ import API_ENDPOINTS from '@config/endpoints';
 import TransactionModal, { TransactionFormData } from '@components/transactionmodal';
 import TransactionTable from '@components/transactiontable';
 import DeleteConfirmModal from '@components/deleteconfirmmodal';
-import { Transaction, Account, Category, TransactionType, ApiResponse } from '@typings/index';
+import ErrorBanner from '@components/errorbanner';
+import { Transaction, Account, Category, ApiResponse } from '@typings/index';
 import styles from '@styles/transactions.module.css';
 
 const Transactions = () => {
@@ -13,6 +14,7 @@ const Transactions = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [filters, setFilters] = useState({
     accountId: '',
@@ -38,7 +40,7 @@ const Transactions = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      console.log('[TRANSACTIONS] Fetching data');
+      setError(null);
 
       const [transactionsRes, accountsRes, categoriesRes] = await Promise.all([
         api.get<ApiResponse<Transaction[]>>(API_ENDPOINTS.TRANSACTIONS.BASE),
@@ -46,12 +48,15 @@ const Transactions = () => {
         api.get<ApiResponse<Category[]>>(API_ENDPOINTS.CATEGORIES.BASE),
       ]);
 
-      console.log('[TRANSACTIONS] Data fetched successfully');
       setTransactions(transactionsRes.data.data);
       setAccounts(accountsRes.data.data);
       setCategories(categoriesRes.data.data);
-    } catch (error: any) {
-      console.error('[TRANSACTIONS] Error fetching data:', error);
+    } catch (err: any) {
+      console.error('[TRANSACTIONS] Error fetching data:', err);
+      setError(
+        err.response?.data?.message ||
+          'Could not load transactions. Please refresh or try again later.'
+      );
     } finally {
       setLoading(false);
     }
@@ -59,8 +64,6 @@ const Transactions = () => {
 
   const applyFilters = async () => {
     try {
-      console.log('[TRANSACTIONS] Applying filters:', filters);
-
       const params = new URLSearchParams();
       if (filters.accountId) params.append('accountId', filters.accountId);
       if (filters.categoryId) params.append('categoryId', filters.categoryId);
@@ -73,17 +76,14 @@ const Transactions = () => {
 
       const response = await api.get<ApiResponse<Transaction[]>>(url);
       setTransactions(response.data.data);
-    } catch (error: any) {
-      console.error('[TRANSACTIONS] Error applying filters:', error);
+    } catch (err: any) {
+      console.error('[TRANSACTIONS] Error applying filters:', err);
     }
   };
 
   const handleCreateTransaction = async (data: TransactionFormData) => {
     try {
-      console.log('[TRANSACTIONS] Creating transaction:', data);
-
       if (data.fromAccountId && data.toAccountId) {
-        // Transfer
         await api.post<ApiResponse<any>>(API_ENDPOINTS.TRANSACTIONS.TRANSFER, {
           fromAccountId: data.fromAccountId,
           toAccountId: data.toAccountId,
@@ -93,7 +93,6 @@ const Transactions = () => {
           paymentMode: data.paymentMode,
         });
       } else {
-        // Regular transaction
         await api.post<ApiResponse<Transaction>>(API_ENDPOINTS.TRANSACTIONS.BASE, {
           accountId: data.accountId,
           categoryId: data.categoryId || undefined,
@@ -105,12 +104,22 @@ const Transactions = () => {
         });
       }
 
-      console.log('[TRANSACTIONS] Transaction created successfully');
       await fetchData();
-    } catch (error: any) {
-      console.error('[TRANSACTIONS] Error creating transaction:', error);
-      alert(error.response?.data?.message || 'Failed to create transaction');
-      throw error;
+    } catch (err: any) {
+      console.error('[TRANSACTIONS] Error creating transaction:', err);
+      const errs = err.response?.data?.errors;
+      const detail =
+        errs?.amount ||
+        errs?.accounts ||
+        errs?.account ||
+        errs?.fromAccountId ||
+        errs?.toAccountId ||
+        errs?.category ||
+        errs?.type ||
+        errs?.transactionDate ||
+        errs?.authorization;
+      alert(detail || err.response?.data?.message || 'Failed to create transaction');
+      throw err;
     }
   };
 
@@ -119,17 +128,15 @@ const Transactions = () => {
 
     try {
       setDeleteLoading(true);
-      console.log('[TRANSACTIONS] Deleting transaction:', transactionToDelete.id);
-
       await api.delete(API_ENDPOINTS.TRANSACTIONS.BY_ID(transactionToDelete.id));
-
-      console.log('[TRANSACTIONS] Transaction deleted successfully');
       setDeleteModalOpen(false);
       setTransactionToDelete(null);
       await fetchData();
-    } catch (error: any) {
-      console.error('[TRANSACTIONS] Error deleting transaction:', error);
-      alert(error.response?.data?.message || 'Failed to delete transaction');
+    } catch (err: any) {
+      console.error('[TRANSACTIONS] Error deleting transaction:', err);
+      const errs = err.response?.data?.errors;
+      const detail = errs?.transaction || errs?.authorization;
+      alert(detail || err.response?.data?.message || 'Failed to delete transaction');
     } finally {
       setDeleteLoading(false);
     }
@@ -157,6 +164,8 @@ const Transactions = () => {
 
   return (
     <div className={styles.transactions}>
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+
       <div className={styles.header}>
         <div className={styles.headerLeft}>
           <h1 className={styles.title}>Transactions</h1>
@@ -170,7 +179,6 @@ const Transactions = () => {
         </div>
       </div>
 
-      {/* Filter Bar */}
       <div className={styles.filterBar}>
         <div className={styles.filterGrid}>
           <div className={styles.filterGroup}>
@@ -252,7 +260,6 @@ const Transactions = () => {
         )}
       </div>
 
-      {/* Transactions Table */}
       <div className={styles.tableCard}>
         {transactions.length > 0 ? (
           <div className={styles.tableWrapper}>

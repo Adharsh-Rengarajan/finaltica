@@ -4,6 +4,7 @@ import api from '@config/api';
 import API_ENDPOINTS from '@config/endpoints';
 import AccountModal, { AccountFormData } from '@components/accountmodal';
 import DeleteConfirmModal from '@components/deleteconfirmmodal';
+import ErrorBanner from '@components/errorbanner';
 import { Account, AccountType, ApiResponse } from '@typings/index';
 import { formatCurrency, formatDate } from '@utils/formatters';
 import styles from '@styles/accounts.module.css';
@@ -12,12 +13,13 @@ const Accounts = () => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [filteredAccounts, setFilteredAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>('ALL');
-  
+
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedAccount, setSelectedAccount] = useState<Account | undefined>();
-  
+
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [accountToDelete, setAccountToDelete] = useState<Account | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -37,14 +39,15 @@ const Accounts = () => {
   const fetchAccounts = async () => {
     try {
       setLoading(true);
-      console.log('[ACCOUNTS] Fetching accounts');
-      
+      setError(null);
       const response = await api.get<ApiResponse<Account[]>>(API_ENDPOINTS.ACCOUNTS.BASE);
-      
-      console.log('[ACCOUNTS] Accounts fetched:', response.data.data.length);
       setAccounts(response.data.data);
-    } catch (error: any) {
-      console.error('[ACCOUNTS] Error fetching accounts:', error);
+    } catch (err: any) {
+      console.error('[ACCOUNTS] Error fetching accounts:', err);
+      setError(
+        err.response?.data?.message ||
+          'Could not load your accounts. Please refresh or try again later.'
+      );
     } finally {
       setLoading(false);
     }
@@ -52,40 +55,24 @@ const Accounts = () => {
 
   const handleCreateAccount = async (data: AccountFormData) => {
     try {
-      // Match backend DTO exactly
       const payload = {
         name: data.name,
         type: data.type,
         currency: data.currency,
-        initialBalance: data.initialBalance || 0
+        initialBalance: data.initialBalance ?? 0,
       };
-      
-      console.log('[ACCOUNTS] Creating account with payload:', payload);
-      console.log('[ACCOUNTS] Payload types:', {
-        name: typeof payload.name,
-        type: typeof payload.type,
-        currency: typeof payload.currency,
-        initialBalance: typeof payload.initialBalance
-      });
-      
-      const response = await api.post<ApiResponse<Account>>(
-        API_ENDPOINTS.ACCOUNTS.BASE,
-        payload
-      );
-      
-      console.log('[ACCOUNTS] Account created successfully:', response.data);
+      await api.post<ApiResponse<Account>>(API_ENDPOINTS.ACCOUNTS.BASE, payload);
       await fetchAccounts();
-    } catch (error: any) {
-      console.error('[ACCOUNTS] Error creating account:', error);
-      console.error('[ACCOUNTS] Error response:', error.response?.data);
-      console.error('[ACCOUNTS] Error status:', error.response?.status);
-      console.error('[ACCOUNTS] Full error object:', JSON.stringify(error.response?.data, null, 2));
-      
-      // Show user-friendly error message
-      const errorMessage = error.response?.data?.message || 
-                          'Failed to create account. Check console for details.';
-      alert(errorMessage);
-      throw error;
+    } catch (err: any) {
+      console.error('[ACCOUNTS] Error creating account:', err);
+      const fieldErrors = err.response?.data?.errors;
+      const detail =
+        fieldErrors?.initialBalance ||
+        fieldErrors?.name ||
+        fieldErrors?.type ||
+        fieldErrors?.currency;
+      alert(detail || err.response?.data?.message || 'Failed to create account.');
+      throw err;
     }
   };
 
@@ -93,25 +80,17 @@ const Accounts = () => {
     if (!selectedAccount) return;
 
     try {
-      console.log('[ACCOUNTS] Updating account:', selectedAccount.id);
-      
       await api.put<ApiResponse<Account>>(
         API_ENDPOINTS.ACCOUNTS.BY_ID(selectedAccount.id),
-        {
-          name: data.name,
-          currency: data.currency,
-        }
+        { name: data.name }
       );
-      
-      console.log('[ACCOUNTS] Account updated successfully');
       await fetchAccounts();
-    } catch (error: any) {
-      console.error('[ACCOUNTS] Error updating account:', error);
-      console.error('[ACCOUNTS] Error response:', error.response?.data);
-      
-      const errorMessage = error.response?.data?.message || 'Failed to update account';
-      alert(errorMessage);
-      throw error;
+    } catch (err: any) {
+      console.error('[ACCOUNTS] Error updating account:', err);
+      const fieldErrors = err.response?.data?.errors;
+      const detail = fieldErrors?.name || fieldErrors?.authorization;
+      alert(detail || err.response?.data?.message || 'Failed to update account');
+      throw err;
     }
   };
 
@@ -120,20 +99,15 @@ const Accounts = () => {
 
     try {
       setDeleteLoading(true);
-      console.log('[ACCOUNTS] Deleting account:', accountToDelete.id);
-      
       await api.delete(API_ENDPOINTS.ACCOUNTS.BY_ID(accountToDelete.id));
-      
-      console.log('[ACCOUNTS] Account deleted successfully');
       setDeleteModalOpen(false);
       setAccountToDelete(null);
       await fetchAccounts();
-    } catch (error: any) {
-      console.error('[ACCOUNTS] Error deleting account:', error);
-      console.error('[ACCOUNTS] Error response:', error.response?.data);
-      
-      const errorMessage = error.response?.data?.message || 'Failed to delete account';
-      alert(errorMessage);
+    } catch (err: any) {
+      console.error('[ACCOUNTS] Error deleting account:', err);
+      const fieldErrors = err.response?.data?.errors;
+      const detail = fieldErrors?.account || fieldErrors?.authorization;
+      alert(detail || err.response?.data?.message || 'Failed to delete account');
     } finally {
       setDeleteLoading(false);
     }
@@ -222,6 +196,8 @@ const Accounts = () => {
 
   return (
     <div className={styles.accounts}>
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+
       <div className={styles.header}>
         <div className={styles.headerLeft}>
           <h1 className={styles.title}>Accounts</h1>

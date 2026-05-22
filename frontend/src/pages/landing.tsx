@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom';
-import { 
-  CreditCard, 
-  BarChart3, 
-  ArrowLeftRight, 
-  TrendingUp, 
-  FileText, 
+import {
+  CreditCard,
+  BarChart3,
+  ArrowLeftRight,
+  TrendingUp,
+  FileText,
   Shield,
   UserPlus,
   Link as LinkIcon,
@@ -16,6 +16,10 @@ import LandingHeader from '@components/landingheader';
 import HeroSection from '@components/herosection';
 import FeatureCard from '@components/featurecard';
 import LandingFooter from '@components/landingfooter';
+import signup from '../assets/signup.png';
+import accountsCard from '../assets/accounts-card.png';
+import analyticsDashboard from '../assets/analytics-dashboard.png';
+import fullDashboard from '../assets/full-dashboard.png';
 import styles from '@styles/landing.module.css';
 
 const Landing = () => {
@@ -63,7 +67,6 @@ const Landing = () => {
       <LandingHeader />
       <HeroSection />
 
-      {/* Features Section */}
       <section id="features" className={`${styles.section} ${styles.sectionLight}`}>
         <div className={styles.container}>
           <div className={styles.sectionHeader}>
@@ -80,7 +83,6 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* How It Works Section */}
       <section id="how-it-works" className={`${styles.section} ${styles.sectionGreen}`}>
         <div className={styles.container}>
           <div className={styles.sectionHeader}>
@@ -100,9 +102,11 @@ const Landing = () => {
                 Sign up with your email in under 60 seconds. No credit card required, no hidden fees.
               </p>
               <div className={styles.stepVisual}>
-                <div className={styles.stepVisualPlaceholder}>
-                  Signup Form
-                </div>
+                <img
+                  src={signup}
+                  alt="Finaltica signup form"
+                  className={styles.stepImage}
+                />
               </div>
             </div>
 
@@ -116,9 +120,11 @@ const Landing = () => {
                 Add your checking, savings, credit cards, and investment accounts. Set initial balances and start tracking.
               </p>
               <div className={styles.stepVisual}>
-                <div className={styles.stepVisualPlaceholder}>
-                  Account Cards
-                </div>
+                <img
+                  src={accountsCard}
+                  alt="Finaltica accounts overview"
+                  className={styles.stepImage}
+                />
               </div>
             </div>
 
@@ -132,16 +138,17 @@ const Landing = () => {
                 Log transactions, view insights, generate reports. Watch your net worth grow with intelligent financial guidance.
               </p>
               <div className={styles.stepVisual}>
-                <div className={styles.stepVisualPlaceholder}>
-                  Analytics Dashboard
-                </div>
+                <img
+                  src={analyticsDashboard}
+                  alt="Finaltica analytics dashboard"
+                  className={styles.stepImage}
+                />
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Dashboard Preview Section */}
       <section id="dashboard-preview" className={`${styles.section} ${styles.sectionLight}`}>
         <div className={styles.container}>
           <div className={styles.sectionHeader}>
@@ -152,9 +159,11 @@ const Landing = () => {
           </div>
           <div className={styles.dashboardPreview}>
             <div className={styles.previewImage}>
-              <div className={styles.previewPlaceholder}>
-                Full Dashboard Screenshot
-              </div>
+              <img
+                src={fullDashboard}
+                alt="Finaltica full dashboard preview"
+                className={styles.previewImg}
+              />
             </div>
           </div>
           <div className={styles.statsRow}>
@@ -174,7 +183,6 @@ const Landing = () => {
         </div>
       </section>
 
-      {/* Final CTA Section */}
       <section className={`${styles.section} ${styles.sectionDark}`}>
         <div className={styles.container}>
           <div className={styles.ctaContent}>

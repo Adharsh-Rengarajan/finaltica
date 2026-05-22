@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { ArrowRight, Shield, TrendingUp, Activity } from 'lucide-react';
-import styles from '@styles/herosection.module.css';
+import analyticsDashboard from '../assets/analytics-dashboard.png';import styles from '@styles/herosection.module.css';
 
 const HeroSection = () => {
   const scrollToSection = (id: string) => {
@@ -18,7 +18,7 @@ const HeroSection = () => {
             Take Control of Your Financial Future
           </h1>
           <p className={styles.subheadline}>
-            The all-in-one platform to track expenses, manage investments, and build wealth 
+            The all-in-one platform to track expenses, manage investments, and build wealth
             with intelligent insights. Start your journey to financial freedom today.
           </p>
 
@@ -27,7 +27,7 @@ const HeroSection = () => {
               Get Started Free
               <ArrowRight size={20} />
             </Link>
-            <button 
+            <button
               className={styles.secondaryBtn}
               onClick={() => scrollToSection('features')}
             >
@@ -53,9 +53,11 @@ const HeroSection = () => {
 
         <div className={styles.visual}>
           <div className={styles.dashboardMockup}>
-            <div className={styles.mockupPlaceholder}>
-              Dashboard Preview
-            </div>
+            <img
+              src={analyticsDashboard}
+              alt="Finaltica analytics dashboard preview"
+              className={styles.mockupImage}
+            />
           </div>
         </div>
       </div>

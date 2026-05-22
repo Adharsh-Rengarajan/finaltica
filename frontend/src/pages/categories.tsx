@@ -4,12 +4,14 @@ import api from '@config/api';
 import API_ENDPOINTS from '@config/endpoints';
 import CategoryModal, { CategoryFormData } from '@components/categorymodal';
 import DeleteConfirmModal from '@components/deleteconfirmmodal';
+import ErrorBanner from '@components/errorbanner';
 import { Category, CategoryType, ApiResponse } from '@typings/index';
 import styles from '@styles/categories.module.css';
 
 const Categories = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
@@ -27,14 +29,15 @@ const Categories = () => {
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      console.log('[CATEGORIES] Fetching categories');
-
+      setError(null);
       const response = await api.get<ApiResponse<Category[]>>(API_ENDPOINTS.CATEGORIES.BASE);
-
-      console.log('[CATEGORIES] Categories fetched:', response.data.data.length);
       setCategories(response.data.data);
-    } catch (error: any) {
-      console.error('[CATEGORIES] Error fetching categories:', error);
+    } catch (err: any) {
+      console.error('[CATEGORIES] Error fetching categories:', err);
+      setError(
+        err.response?.data?.message ||
+          'Could not load categories. Please refresh or try again later.'
+      );
     } finally {
       setLoading(false);
     }
@@ -42,16 +45,14 @@ const Categories = () => {
 
   const handleCreateCategory = async (data: CategoryFormData) => {
     try {
-      console.log('[CATEGORIES] Creating category:', data);
-
       await api.post<ApiResponse<Category>>(API_ENDPOINTS.CATEGORIES.BASE, data);
-
-      console.log('[CATEGORIES] Category created successfully');
       await fetchCategories();
-    } catch (error: any) {
-      console.error('[CATEGORIES] Error creating category:', error);
-      alert(error.response?.data?.message || 'Failed to create category');
-      throw error;
+    } catch (err: any) {
+      console.error('[CATEGORIES] Error creating category:', err);
+      const errs = err.response?.data?.errors;
+      const detail = errs?.name || errs?.type;
+      alert(detail || err.response?.data?.message || 'Failed to create category');
+      throw err;
     }
   };
 
@@ -59,19 +60,17 @@ const Categories = () => {
     if (!selectedCategory) return;
 
     try {
-      console.log('[CATEGORIES] Updating category:', selectedCategory.id);
-
       await api.put<ApiResponse<Category>>(
         API_ENDPOINTS.CATEGORIES.BY_ID(selectedCategory.id),
         { name: data.name }
       );
-
-      console.log('[CATEGORIES] Category updated successfully');
       await fetchCategories();
-    } catch (error: any) {
-      console.error('[CATEGORIES] Error updating category:', error);
-      alert(error.response?.data?.message || 'Failed to update category');
-      throw error;
+    } catch (err: any) {
+      console.error('[CATEGORIES] Error updating category:', err);
+      const errs = err.response?.data?.errors;
+      const detail = errs?.name || errs?.category || errs?.authorization;
+      alert(detail || err.response?.data?.message || 'Failed to update category');
+      throw err;
     }
   };
 
@@ -80,17 +79,15 @@ const Categories = () => {
 
     try {
       setDeleteLoading(true);
-      console.log('[CATEGORIES] Deleting category:', categoryToDelete.id);
-
       await api.delete(API_ENDPOINTS.CATEGORIES.BY_ID(categoryToDelete.id));
-
-      console.log('[CATEGORIES] Category deleted successfully');
       setDeleteModalOpen(false);
       setCategoryToDelete(null);
       await fetchCategories();
-    } catch (error: any) {
-      console.error('[CATEGORIES] Error deleting category:', error);
-      alert(error.response?.data?.message || 'Failed to delete category');
+    } catch (err: any) {
+      console.error('[CATEGORIES] Error deleting category:', err);
+      const errs = err.response?.data?.errors;
+      const detail = errs?.category || errs?.authorization;
+      alert(detail || err.response?.data?.message || 'Failed to delete category');
     } finally {
       setDeleteLoading(false);
     }
@@ -191,13 +188,14 @@ const Categories = () => {
 
   return (
     <div className={styles.categories}>
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+
       <div className={styles.header}>
         <h1 className={styles.title}>Categories</h1>
         <p className={styles.subtitle}>Organize your income and expenses</p>
       </div>
 
       <div className={styles.columnsContainer}>
-        {/* Income Categories */}
         <div className={styles.column}>
           <div className={styles.columnHeader}>
             <div className={styles.columnTitle}>
@@ -217,7 +215,6 @@ const Categories = () => {
           {renderCategoryList(incomeCategories, 'INCOME' as CategoryType)}
         </div>
 
-        {/* Expense Categories */}
         <div className={styles.column}>
           <div className={styles.columnHeader}>
             <div className={styles.columnTitle}>

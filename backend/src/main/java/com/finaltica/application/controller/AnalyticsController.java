@@ -38,4 +38,9 @@ public class AnalyticsController {
 
 		return analyticsService.getCategorySpending(user, startDate, endDate);
 	}
+
+	@GetMapping("/portfolio")
+	public ResponseEntity<?> getPortfolio(@AuthenticationPrincipal User user) {
+		return analyticsService.getPortfolio(user);
+	}
 }

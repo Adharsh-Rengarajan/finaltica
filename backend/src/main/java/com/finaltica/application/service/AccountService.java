@@ -1,5 +1,6 @@
 package com.finaltica.application.service;
 
+import java.math.BigDecimal;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,27 +30,28 @@ public class AccountService {
 
 	public ResponseEntity<ApiResponse<List<AccountResponseDTO>>> getAllAccounts(User user) {
 		List<Account> accounts = accountRepository.findByUser(user);
-		List<AccountResponseDTO> accountDTOs = accounts.stream()
-				.map(this::convertToDTO)
-				.collect(Collectors.toList());
+		List<AccountResponseDTO> accountDTOs = accounts.stream().map(this::convertToDTO).collect(Collectors.toList());
 
-		return ResponseEntity.ok(
-				ApiResponse.success(HttpStatus.OK.value(), "Accounts retrieved successfully", accountDTOs));
+		return ResponseEntity
+				.ok(ApiResponse.success(HttpStatus.OK.value(), "Accounts retrieved successfully", accountDTOs));
 	}
 
 	public ResponseEntity<ApiResponse<List<AccountResponseDTO>>> getAccountsByType(AccountType type, User user) {
 		List<Account> accounts = accountRepository.findByUserAndType(user, type);
-		List<AccountResponseDTO> accountDTOs = accounts.stream()
-				.map(this::convertToDTO)
-				.collect(Collectors.toList());
+		List<AccountResponseDTO> accountDTOs = accounts.stream().map(this::convertToDTO).collect(Collectors.toList());
 
-		return ResponseEntity.ok(
-				ApiResponse.success(HttpStatus.OK.value(), type + " accounts retrieved successfully", accountDTOs));
+		return ResponseEntity
+				.ok(ApiResponse.success(HttpStatus.OK.value(), type + " accounts retrieved successfully", accountDTOs));
 	}
 
 	public ResponseEntity<ApiResponse<AccountResponseDTO>> getAccountById(UUID id, User user) {
-		Account account = accountRepository.findById(id)
-				.orElseThrow(() -> new RuntimeException("Account not found"));
+		Account account = accountRepository.findById(id).orElse(null);
+		if (account == null) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("account", "Account not found");
+			return ResponseEntity.status(HttpStatus.NOT_FOUND)
+					.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "Account not found", errors));
+		}
 
 		if (!account.getUser().getId().equals(user.getId())) {
 			Map<String, String> errors = new HashMap<>();
@@ -59,8 +61,8 @@ public class AccountService {
 		}
 
 		AccountResponseDTO accountDTO = convertToDTO(account);
-		return ResponseEntity.ok(
-				ApiResponse.success(HttpStatus.OK.value(), "Account retrieved successfully", accountDTO));
+		return ResponseEntity
+				.ok(ApiResponse.success(HttpStatus.OK.value(), "Account retrieved successfully", accountDTO));
 	}
 
 	@Transactional
@@ -73,20 +75,29 @@ public class AccountService {
 					.body(ApiResponse.error(HttpStatus.CONFLICT.value(), "Account already exists", errors));
 		}
 
-		if (request.getType() == AccountType.CREDIT && request.getInitialBalance().compareTo(java.math.BigDecimal.ZERO) > 0) {
-			Map<String, String> errors = new HashMap<>();
-			errors.put("initialBalance", "Credit card balance must be zero or negative");
-			return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-					.body(ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid balance for credit account", errors));
+		// Sign rules for initial balance depend on account type.
+		// CREDIT: balance must be <= 0 (you owe money, or have a fresh card at 0).
+		// Everything else: balance must be >= 0 (you can't start a checking
+		// account in the red without going through an overdraft transaction).
+		BigDecimal initial = request.getInitialBalance();
+		if (request.getType() == AccountType.CREDIT) {
+			if (initial.compareTo(BigDecimal.ZERO) > 0) {
+				Map<String, String> errors = new HashMap<>();
+				errors.put("initialBalance", "Credit card balance must be zero or negative");
+				return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse
+						.error(HttpStatus.BAD_REQUEST.value(), "Invalid balance for credit account", errors));
+			}
+		} else {
+			if (initial.compareTo(BigDecimal.ZERO) < 0) {
+				Map<String, String> errors = new HashMap<>();
+				errors.put("initialBalance", request.getType() + " accounts cannot start with a negative balance");
+				return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+						ApiResponse.error(HttpStatus.BAD_REQUEST.value(), "Invalid balance for account type", errors));
+			}
 		}
 
-		Account account = Account.builder()
-				.name(request.getName())
-				.type(request.getType())
-				.currency(request.getCurrency())
-				.currentBalance(request.getInitialBalance())
-				.user(user)
-				.build();
+		Account account = Account.builder().name(request.getName()).type(request.getType())
+				.currency(request.getCurrency()).currentBalance(initial).user(user).build();
 
 		Account saved = accountRepository.save(account);
 		AccountResponseDTO accountDTO = convertToDTO(saved);
@@ -99,8 +110,13 @@ public class AccountService {
 	public ResponseEntity<ApiResponse<AccountResponseDTO>> updateAccount(UUID id, UpdateAccountRequestDTO request,
 			User user) {
 
-		Account account = accountRepository.findById(id)
-				.orElseThrow(() -> new RuntimeException("Account not found"));
+		Account account = accountRepository.findById(id).orElse(null);
+		if (account == null) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("account", "Account not found");
+			return ResponseEntity.status(HttpStatus.NOT_FOUND)
+					.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "Account not found", errors));
+		}
 
 		if (!account.getUser().getId().equals(user.getId())) {
 			Map<String, String> errors = new HashMap<>();
@@ -118,19 +134,24 @@ public class AccountService {
 			}
 		}
 
+		// Currency is intentionally not updated here; see UpdateAccountRequestDTO.
 		account.setName(request.getName());
-		account.setCurrency(request.getCurrency());
 		Account updated = accountRepository.save(account);
 		AccountResponseDTO accountDTO = convertToDTO(updated);
 
-		return ResponseEntity.ok(
-				ApiResponse.success(HttpStatus.OK.value(), "Account updated successfully", accountDTO));
+		return ResponseEntity
+				.ok(ApiResponse.success(HttpStatus.OK.value(), "Account updated successfully", accountDTO));
 	}
 
 	@Transactional
 	public ResponseEntity<ApiResponse<Void>> deleteAccount(UUID id, User user) {
-		Account account = accountRepository.findById(id)
-				.orElseThrow(() -> new RuntimeException("Account not found"));
+		Account account = accountRepository.findById(id).orElse(null);
+		if (account == null) {
+			Map<String, String> errors = new HashMap<>();
+			errors.put("account", "Account not found");
+			return ResponseEntity.status(HttpStatus.NOT_FOUND)
+					.body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "Account not found", errors));
+		}
 
 		if (!account.getUser().getId().equals(user.getId())) {
 			Map<String, String> errors = new HashMap<>();
@@ -148,19 +169,12 @@ public class AccountService {
 
 		accountRepository.delete(account);
 
-		return ResponseEntity.ok(
-				ApiResponse.success(HttpStatus.OK.value(), "Account deleted successfully", null));
+		return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "Account deleted successfully", null));
 	}
 
 	private AccountResponseDTO convertToDTO(Account account) {
-		return AccountResponseDTO.builder()
-				.id(account.getId())
-				.name(account.getName())
-				.type(account.getType())
-				.currentBalance(account.getCurrentBalance())
-				.currency(account.getCurrency())
-				.createdAt(account.getCreatedAt())
-				.updatedAt(account.getUpdatedAt())
-				.build();
+		return AccountResponseDTO.builder().id(account.getId()).name(account.getName()).type(account.getType())
+				.currentBalance(account.getCurrentBalance()).currency(account.getCurrency())
+				.createdAt(account.getCreatedAt()).updatedAt(account.getUpdatedAt()).build();
 	}
 }
